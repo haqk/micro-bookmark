@@ -1,63 +1,77 @@
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
 local config = import("micro/config")
 
 -- table of bookmarks, where each bookmark is a line number
-local _marks = {}
+local marks = {}
+-- track cursor position
+local curpos
+-- track text selection
+local sel
+-- track bookmark state of current line
+local onmark
+-- track buffer lines
+local oldl
 
 -- mark/unmark current line
 function _toggle(bp)
 	local c = bp.Buf:GetActiveCursor()
-	local newMark = c.Loc.Y
-	local oldMark = false
+	local newy = c.Loc.Y
+	local oldy = false
 	
-	-- if there's already a mark here, remove it from the table
-	-- and clear the gutter prior to redrawing all marks later
-	for i,v in ipairs(_marks) do
-		if (v == newMark) then
-			oldMark = true
-			table.remove(_marks, i)
-			bp.Buf:ClearMessages("bookmark")
+	-- remove mark if already present
+	for i,y in ipairs(marks) do
+		if (y == newy) then
+			oldy = true
+			table.remove(marks, i)
 			break
 		end
 	end
 	
-	-- if there wasn't already a mark here, add one to the table
-	if (oldMark == false) then	
-		table.insert(_marks, newMark)
+	-- add mark if not already present
+	if (oldy == false) then	
+		table.insert(marks, newy)
 	end
 
-	-- if there are any bookmarks left in the table, sort and redraw
-	if #_marks > 0 then
-		table.sort(_marks)
-		-- redraw all marks in table
-		for i,v in ipairs(_marks) do
-			bp.Buf:AddMessage(buffer.NewMessageAtLine("bookmark", "", v + 1, buffer.MTInfo))
-		end
+	-- if there are marks, sort
+	if #marks > 0 then
+		table.sort(marks)
 	end
+
+	_redraw(bp)
+end
+
+-- clear all bookmarks
+function _clear(bp)
+	marks = {}
+	collectgarbage()
+
+	bp.Buf:ClearMessages("bookmark")
+	_gutter(bp, #marks.."", 0)
 end
 
 -- jump to next bookmark
 function _next(bp)
-	if #_marks == 0 then return; end
+	-- no action if no marks
+	if #marks == 0 then return; end
 
 	local c = bp.Buf:GetActiveCursor()
 
 	-- look to see if there are any marks lower in the buffer
-	local noMoreBelow = true
-	for i,y in ipairs(_marks) do
+	local noneBelow = true
+	for i,y in ipairs(marks) do
 		if (y > c.Loc.Y) then
 			c.Loc.Y = y
-			noMoreBelow = false
+			noneBelow = false
 			break
 		end
 	end
 
 	-- if there's nothing lower, go to the first (highest) mark
-	if (noMoreBelow == true) then
-		c.Loc.Y = _marks[1]
+	if (noneBelow == true) then
+		c.Loc.Y = marks[1]
 	end
 
 	bp:Relocate()
@@ -65,20 +79,21 @@ end
 
 -- jump to previous bookmark
 function _prev(bp)
-	if #_marks == 0 then return; end
+	-- no action if no marks
+	if #marks == 0 then return; end
 
 	local c = bp.Buf:GetActiveCursor()
 
 	-- look to see if there are any marks higher in the buffer
-	local noMoreAbove = true
-	local i = #_marks
+	local noneAbove = true
+	local i = #marks
 	while (true) do
 
-		local y = _marks[i]
+		local y = marks[i]
 
 		if (y < c.Loc.Y) then
 			c.Loc.Y = y
-			noMoreAbove = false
+			noneAbove = false
 			i = 1
 		end
 
@@ -87,21 +102,191 @@ function _prev(bp)
 	end
 	
 	-- if there's nothing higher, go to the last (lowest) mark
-	if (noMoreAbove == true) then
-		c.Loc.Y = _marks[#_marks]
+	if (noneAbove == true) then
+		c.Loc.Y = marks[#marks]
 	end
 
 	bp:Relocate()
 end
 
+
+-- handlers
+
+function preDuplicateLine(bp)
+	_save_pre_state(bp)
+end
+
+function onDuplicateLine(bp)
+	_update(bp)
+end
+
+function preInsertNewline(bp)
+	_save_pre_state(bp)
+end
+
+function onInsertNewline(bp)
+	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark 
+	if (curpos.X ~= 0 and onmark) then
+		oldl = bp.Buf:LinesNum()
+	else
+		_update(bp)
+	end
+end
+
+function preDelete(bp)
+	_save_pre_state(bp)
+end
+
+function onDelete(bp)
+	_update(bp)
+end
+
+function preCut(bp)
+	_save_pre_state(bp)
+end
+
+function onCut(bp)
+	_update(bp)
+end
+
+function preCutLine(bp)
+	_save_pre_state(bp)
+end
+
+function onCutLine(bp)
+	_update(bp)
+end
+
+function preBackspace(bp)
+	_save_pre_state(bp)
+end
+
+function onBackspace(bp)
+	_update(bp)
+end
+
+function preUndo(bp)
+	_save_pre_state(bp)
+end
+
+function onUndo(bp)
+	_update(bp)
+end
+
+function preRedo(bp)
+	_save_pre_state(bp)
+end
+
+function onRedo(bp)
+	_update(bp)
+end
+
+-- update bookmark positions
+function _update(bp)
+	local newl = bp.Buf:LinesNum()
+	local diff = math.abs(newl - oldl)
+
+	-- only update if lines have been added or removed
+	if (diff) then
+		if (newl < oldl) then
+			diff = -diff
+		end
+		oldl = newl
+
+		local c = bp.Buf:GetActiveCursor()
+		-- add or subtract lines for all marks below current line
+		for i,y in ipairs(marks) do
+			-- update bookmarks above cursor line when lines have been removed
+			-- or update bookmarks at or below cursor line when lines have been added
+			if (diff > 0 and y >= curpos.Y or diff < 0 and y > c.Loc.Y) then
+				-- move bookmarks in text selection to first line of selection
+				if (sel[1].Y < y and sel[2].Y > y) then
+					marks[i] = sel[1].Y
+				else
+				-- otherwise just add the difference
+					marks[i] = y + diff
+				end
+			end
+		end
+
+		-- after bookmarks have been moved, remove any overlapping ones
+		_dedupe()
+
+		-- then redraw the lot
+		_redraw(bp)
+	end
+end
+
+-- remove duplicate using hash table
+function _dedupe()
+	local hash = {}
+	local res = {}
+
+	for k,v in ipairs(marks) do
+	   if (not hash[v]) then
+		   res[#res+1] = v
+		   hash[v] = true
+	   end
+	end
+	marks = res
+end
+
+-- clear gutter and redraw all marks
+function _redraw(bp)
+	bp.Buf:ClearMessages("bookmark")
+
+	if #marks > 0 then
+		for i,y in ipairs(marks) do
+			_gutter(bp, "bookmark ("..i.."/"..#marks..")", y + 1)
+		end
+	else
+		-- prevent text shift caused by gutter open/close action by keeping it open
+		_gutter(bp, "", 0)
+	end
+end
+
+function _gutter(bp, msg, line)
+	bp.Buf:AddMessage(buffer.NewMessageAtLine("bookmark", msg, line, buffer.MTInfo))
+end
+
+-- track cursor position, selected lines and whether current line is marked or not
+-- this information will be used in the onAction handlers for bookmark positioning
+function _save_pre_state(bp)
+	curpos = -bp.Cursor.Loc
+
+	onmark = false
+	for i,y in ipairs(marks) do
+		if (y == curpos.Y) then
+			onmark = true
+			break
+		end
+	end
+
+	if bp.Cursor:HasSelection() then
+		sel = -bp.Cursor.CurSelection
+	else
+		sel = {
+			{ Y = curpos.Y },
+			{ Y = curpos.Y }
+		}
+	end
+end
+
 function init()
-	-- setup our commands with autocomplete
+	local bp = micro.CurPane()
+	oldl = bp.Buf:LinesNum()
+	_save_pre_state(bp)
+	_redraw(bp)
+
+	-- setup our commands for autocomplete
 	config.MakeCommand("toggleBookmark", _toggle, config.OptionComplete)
 	config.MakeCommand("nextBookmark", _next, config.OptionComplete)
 	config.MakeCommand("prevBookmark", _prev, config.OptionComplete)
+	config.MakeCommand("clearBookmarks", _clear, config.OptionComplete)
 
 	-- setup default bindings
 	config.TryBindKey("Ctrl-F2", "command:toggleBookmark", false)
+	config.TryBindKey("CtrlShift-F2", "command:clearBookmarks", false)
 	config.TryBindKey("F2", "command:nextBookmark", false)
 	config.TryBindKey("Shift-F2", "command:prevBookmark", false)
 
