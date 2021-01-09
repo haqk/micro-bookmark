@@ -5,6 +5,13 @@
   "Website": "https://github.com/haqk/micro-bookmark",
   "Versions": [
     {
+      "Version": "2.2.1",
+      "Url": "https://github.com/haqk/micro-bookmark/archive/v2.2.1.zip",
+      "Require": {
+        "micro": ">=2.0.0"
+      }
+    },
+    {
       "Version": "2.2.0",
       "Url": "https://github.com/haqk/micro-bookmark/archive/v2.2.0.zip",
       "Require": {

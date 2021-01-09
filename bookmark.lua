@@ -216,7 +216,7 @@ function _update(bp)
 		end
 
 		-- after bookmarks have been moved, remove any overlapping ones
-		_dedupe()
+		_dedupe(bp)
 
 		-- then redraw the lot
 		_redraw(bp)
@@ -224,7 +224,7 @@ function _update(bp)
 end
 
 -- remove duplicate using hash table
-function _dedupe()
+function _dedupe(bp)
 	local bn = bp.Buf:GetName()
 
 	local hash = {}
