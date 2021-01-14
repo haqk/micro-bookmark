@@ -1,4 +1,4 @@
-VERSION = "2.2.0"
+VERSION = "2.2.2"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
@@ -150,6 +150,14 @@ function preCut(bp)
 end
 
 function onCut(bp)
+	_update(bp)
+end
+
+function prePaste(bp)
+	_save_pre_state(bp)
+end
+
+function onPaste(bp)
 	_update(bp)
 end
 
