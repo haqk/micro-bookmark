@@ -114,19 +114,12 @@ end
 
 -- handlers
 
-function preDuplicateLine(bp)
-	_save_pre_state(bp)
-end
-
 function onDuplicateLine(bp)
 	_update(bp)
 end
 
-function preInsertNewline(bp)
-	_save_pre_state(bp)
-end
-
 function onInsertNewline(bp)
+	local bp = micro.CurPane()
 	local bn = bp.Buf:GetName()
 
 	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark 
@@ -137,60 +130,46 @@ function onInsertNewline(bp)
 	end
 end
 
-function preDelete(bp)
-	_save_pre_state(bp)
-end
-
 function onDelete(bp)
 	_update(bp)
-end
-
-function preCut(bp)
-	_save_pre_state(bp)
 end
 
 function onCut(bp)
 	_update(bp)
 end
 
-function prePaste(bp)
-	_save_pre_state(bp)
-end
-
 function onPaste(bp)
 	_update(bp)
-end
-
-function preCutLine(bp)
-	_save_pre_state(bp)
 end
 
 function onCutLine(bp)
 	_update(bp)
 end
 
-function preBackspace(bp)
-	_save_pre_state(bp)
-end
-
 function onBackspace(bp)
 	_update(bp)
-end
-
-function preUndo(bp)
-	_save_pre_state(bp)
 end
 
 function onUndo(bp)
 	_update(bp)
 end
 
-function preRedo(bp)
-	_save_pre_state(bp)
-end
-
 function onRedo(bp)
 	_update(bp)
+end
+
+function onBeforeTextEvent(b, t)
+	local bp = micro.CurPane()
+
+	--~ if t.EventType == 1 then
+		--~ micro.InfoBar():Message('TextEventInsert')
+	--~ elseif t.EventType == -1 then
+		--~ micro.InfoBar():Message('TextEventRemove')
+	--~ elseif t.EventType == 0 then
+		--~ micro.InfoBar():Message('TextEventReplace')
+	--~ end
+
+	_save_pre_state(bp)
 end
 
 -- update bookmark positions
