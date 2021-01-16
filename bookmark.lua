@@ -252,26 +252,28 @@ end
 function _save_pre_state(bp)
 	local bn = bp.Buf:GetName()
 
-	-- save cursor position
-	bd[bn].curpos = -bp.Cursor.Loc
+	if bn and bd[bn] then
+		-- save cursor position
+		bd[bn].curpos = -bp.Cursor.Loc
 
-	-- save mark state of current line
-	bd[bn].onmark = false
-	for i,y in ipairs(bd[bn].marks) do
-		if y == bd[bn].curpos.Y then
-			bd[bn].onmark = true
-			break
+		-- save mark state of current line
+		bd[bn].onmark = false
+		for i,y in ipairs(bd[bn].marks) do
+			if y == bd[bn].curpos.Y then
+				bd[bn].onmark = true
+				break
+			end
 		end
-	end
 
-	-- save text selection range
-	if bp.Cursor:HasSelection() then
-		bd[bn].sel = -bp.Cursor.CurSelection
-	else
-		bd[bn].sel = {
-			{ Y = bd[bn].curpos.Y },
-			{ Y = bd[bn].curpos.Y }
-		}
+		-- save text selection range
+		if bp.Cursor:HasSelection() then
+			bd[bn].sel = -bp.Cursor.CurSelection
+		else
+			bd[bn].sel = {
+				{ Y = bd[bn].curpos.Y },
+				{ Y = bd[bn].curpos.Y }
+			}
+		end
 	end
 end
 
