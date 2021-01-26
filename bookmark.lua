@@ -1,4 +1,4 @@
-VERSION = "2.2.2"
+VERSION = "2.2.3"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
@@ -114,8 +114,18 @@ end
 
 -- handlers
 
-function onDuplicateLine(bp)
-	_update(bp)
+function onBeforeTextEvent(b, t)
+	local bp = micro.CurPane()
+
+	--~ if t.EventType == 1 then
+		--~ micro.InfoBar():Message('TextEventInsert')
+	--~ elseif t.EventType == -1 then
+		--~ micro.InfoBar():Message('TextEventRemove')
+	--~ elseif t.EventType == 0 then
+		--~ micro.InfoBar():Message('TextEventReplace')
+	--~ end
+
+	_save_pre_state(bp)
 end
 
 function onInsertNewline(bp)
@@ -128,6 +138,10 @@ function onInsertNewline(bp)
 	else
 		_update(bp)
 	end
+end
+
+function onDuplicateLine(bp)
+	_update(bp)
 end
 
 function onDelete(bp)
@@ -158,23 +172,12 @@ function onRedo(bp)
 	_update(bp)
 end
 
-function onBeforeTextEvent(b, t)
-	local bp = micro.CurPane()
-
-	--~ if t.EventType == 1 then
-		--~ micro.InfoBar():Message('TextEventInsert')
-	--~ elseif t.EventType == -1 then
-		--~ micro.InfoBar():Message('TextEventRemove')
-	--~ elseif t.EventType == 0 then
-		--~ micro.InfoBar():Message('TextEventReplace')
-	--~ end
-
-	_save_pre_state(bp)
-end
-
 -- update bookmark positions
 function _update(bp)
 	local bn = bp.Buf:GetName()
+
+	-- no action if no marks
+	if #bd[bn].marks == 0 then return; end
 
 	local newl = bp.Buf:LinesNum()
 	local diff = math.abs(newl - bd[bn].oldl)
