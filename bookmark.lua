@@ -176,8 +176,7 @@ end
 function _update(bp)
 	local bn = bp.Buf:GetName()
 
-	-- no action if no marks
-	if #bd[bn].marks == 0 then return; end
+	if bd[bn] == nil then return; end
 
 	local newl = bp.Buf:LinesNum()
 	local diff = math.abs(newl - bd[bn].oldl)
