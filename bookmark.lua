@@ -63,6 +63,8 @@ function _next(bp)
 	local noneBelow = true
 	for i,y in ipairs(bd[bn].marks) do
 		if y > c.Loc.Y then
+			c:ResetSelection()
+			c.Loc.X = 0
 			c.Loc.Y = y
 			noneBelow = false
 			break
@@ -71,6 +73,8 @@ function _next(bp)
 
 	-- if there's nothing lower, go to the first (highest) mark
 	if noneBelow == true then
+		c:ResetSelection()
+		c.Loc.X = 0
 		c.Loc.Y = bd[bn].marks[1]
 	end
 
@@ -94,6 +98,8 @@ function _prev(bp)
 		local y = bd[bn].marks[i]
 
 		if y < c.Loc.Y then
+			c:ResetSelection()
+			c.Loc.X = 0
 			c.Loc.Y = y
 			noneAbove = false
 			i = 1
@@ -105,6 +111,8 @@ function _prev(bp)
 	
 	-- if there's nothing higher, go to the last (lowest) mark
 	if noneAbove == true then
+		c:ResetSelection()
+		c.Loc.X = 0
 		c.Loc.Y = bd[bn].marks[#bd[bn].marks]
 	end
 
