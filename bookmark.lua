@@ -3,6 +3,10 @@ VERSION = "2.2.3"
 local micro = import("micro")
 local buffer = import("micro/buffer")
 local config = import("micro/config")
+local fmt = import("fmt")
+local goos = import("os")
+local ioutil = import("io/ioutil")
+local filepath = import("path/filepath")
 
 -- buffer count
 local bc = 0
@@ -310,6 +314,18 @@ function onBufferOpen(b)
 		-- track buffer lines
 		oldl = 0
 	}
+
+	-- read saved bookmark locations
+	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
+	local data, err = ioutil.ReadFile(name)
+
+	if err == nil then
+		local str = fmt.Sprintf("%s", data)
+    
+		for s in string.gmatch(str, "([^,]+)") do
+			table.insert(bd[bn].marks, tonumber(s))
+		end
+	end
 end
 
 -- called when a buffer pane is ready
@@ -342,6 +358,27 @@ end
 
 	--~ micro.InfoBar():Message(bufstr)
 --~ end
+
+function onSave(bp)
+	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+	if #bd[bp.Buf:GetName()].marks == 0 then
+		-- Delete possibly existing bookmark file
+		if goos.Stat(name) ~= nil then
+			goos.Remove(name)
+		end
+		return false
+	elseif #bd[bp.Buf:GetName()].marks == 1 then
+		-- how to otherwise get the first element?
+		for k in pairs(bd[bp.Buf:GetName()].marks) do
+			data = tostring(bd[bp.Buf:GetName()].marks[k])
+		end
+	else
+		data = table.concat(bd[bp.Buf:GetName()].marks, ",")
+	end
+  
+	ioutil.WriteFile(name, data, 420)
+	return false
+end
 
 function init()
 	-- setup our commands for autocomplete
