@@ -20,7 +20,7 @@ function _toggle(bp)
 	local c = bp.Buf:GetActiveCursor()
 	local newy = c.Loc.Y
 	local oldy = false
-	
+
 	-- remove mark if already present
 	for i,y in ipairs(bd[bn].marks) do
 		if y == newy then
@@ -31,7 +31,7 @@ function _toggle(bp)
 	end
 
 	-- add mark if not already present
-	if oldy == false then	
+	if oldy == false then
 		table.insert(bd[bn].marks, newy)
 	end
 
@@ -112,7 +112,7 @@ function _prev(bp)
 	    i = i - 1
 	    if i == 0 then break; end
 	end
-	
+
 	-- if there's nothing higher, go to the last (lowest) mark
 	if noneAbove == true then
 		c:ResetSelection()
@@ -144,7 +144,7 @@ function onInsertNewline(bp)
 	local bp = micro.CurPane()
 	local bn = bp.Buf:GetName()
 
-	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark 
+	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark
 	if bd[bn].curpos.X ~= 0 and bd[bn].onmark then
 		bd[bn].oldl = bp.Buf:LinesNum()
 	else
@@ -324,7 +324,7 @@ function onBufferOpen(b)
 
 	if err == nil then
 		local str = fmt.Sprintf("%s", data)
-    
+
 		for s in string.gmatch(str, "([^,]+)") do
 			table.insert(bd[bn].marks, tonumber(s))
 		end
@@ -384,7 +384,7 @@ function onSave(bp)
 	else
 		data = table.concat(bd[bp.Buf:GetName()].marks, ",")
 	end
-  
+
 	ioutil.WriteFile(name, data, 420)
 	return false
 end
