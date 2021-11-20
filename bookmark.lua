@@ -360,7 +360,13 @@ end
 --~ end
 
 function onSave(bp)
+	-- don't try to save bookmarks when it's no default buffer, but help etc.
+	if bp.Buf.Type.Kind ~= buffer.BTDefault then
+		return false
+	end
+
 	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+
 	if #bd[bp.Buf:GetName()].marks == 0 then
 		-- Delete possibly existing bookmark file
 		if goos.Stat(name) ~= nil then
