@@ -3,6 +3,10 @@ VERSION = "2.2.3"
 local micro = import("micro")
 local buffer = import("micro/buffer")
 local config = import("micro/config")
+local fmt = import("fmt")
+local goos = import("os")
+local ioutil = import("io/ioutil")
+local filepath = import("path/filepath")
 
 -- buffer count
 local bc = 0
@@ -16,7 +20,7 @@ function _toggle(bp)
 	local c = bp.Buf:GetActiveCursor()
 	local newy = c.Loc.Y
 	local oldy = false
-	
+
 	-- remove mark if already present
 	for i,y in ipairs(bd[bn].marks) do
 		if y == newy then
@@ -27,7 +31,7 @@ function _toggle(bp)
 	end
 
 	-- add mark if not already present
-	if oldy == false then	
+	if oldy == false then
 		table.insert(bd[bn].marks, newy)
 	end
 
@@ -63,6 +67,8 @@ function _next(bp)
 	local noneBelow = true
 	for i,y in ipairs(bd[bn].marks) do
 		if y > c.Loc.Y then
+			c:ResetSelection()
+			c.Loc.X = 0
 			c.Loc.Y = y
 			noneBelow = false
 			break
@@ -71,6 +77,8 @@ function _next(bp)
 
 	-- if there's nothing lower, go to the first (highest) mark
 	if noneBelow == true then
+		c:ResetSelection()
+		c.Loc.X = 0
 		c.Loc.Y = bd[bn].marks[1]
 	end
 
@@ -94,6 +102,8 @@ function _prev(bp)
 		local y = bd[bn].marks[i]
 
 		if y < c.Loc.Y then
+			c:ResetSelection()
+			c.Loc.X = 0
 			c.Loc.Y = y
 			noneAbove = false
 			i = 1
@@ -102,9 +112,11 @@ function _prev(bp)
 	    i = i - 1
 	    if i == 0 then break; end
 	end
-	
+
 	-- if there's nothing higher, go to the last (lowest) mark
 	if noneAbove == true then
+		c:ResetSelection()
+		c.Loc.X = 0
 		c.Loc.Y = bd[bn].marks[#bd[bn].marks]
 	end
 
@@ -132,7 +144,7 @@ function onInsertNewline(bp)
 	local bp = micro.CurPane()
 	local bn = bp.Buf:GetName()
 
-	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark 
+	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark
 	if bd[bn].curpos.X ~= 0 and bd[bn].onmark then
 		bd[bn].oldl = bp.Buf:LinesNum()
 	else
@@ -252,29 +264,32 @@ end
 -- track cursor position, selected lines and whether current line is marked or not
 -- this information will be used in the onAction handlers for bookmark positioning
 function _save_pre_state(bp)
-	local bn = bp.Buf:GetName()
+	-- at least in "raw" mode, bp is nil
+	if bp ~= nil then
+		local bn = bp.Buf:GetName()
 
-	if bn and bd[bn] then
-		-- save cursor position
-		bd[bn].curpos = -bp.Cursor.Loc
+		if bn and bd[bn] then
+			-- save cursor position
+			bd[bn].curpos = -bp.Cursor.Loc
 
-		-- save mark state of current line
-		bd[bn].onmark = false
-		for i,y in ipairs(bd[bn].marks) do
-			if y == bd[bn].curpos.Y then
-				bd[bn].onmark = true
-				break
+			-- save mark state of current line
+			bd[bn].onmark = false
+			for i,y in ipairs(bd[bn].marks) do
+				if y == bd[bn].curpos.Y then
+					bd[bn].onmark = true
+					break
+				end
 			end
-		end
 
-		-- save text selection range
-		if bp.Cursor:HasSelection() then
-			bd[bn].sel = -bp.Cursor.CurSelection
-		else
-			bd[bn].sel = {
-				{ Y = bd[bn].curpos.Y },
-				{ Y = bd[bn].curpos.Y }
-			}
+			-- save text selection range
+			if bp.Cursor:HasSelection() then
+				bd[bn].sel = -bp.Cursor.CurSelection
+			else
+				bd[bn].sel = {
+					{ Y = bd[bn].curpos.Y },
+					{ Y = bd[bn].curpos.Y }
+				}
+			end
 		end
 	end
 end
@@ -302,6 +317,18 @@ function onBufferOpen(b)
 		-- track buffer lines
 		oldl = 0
 	}
+
+	-- read saved bookmark locations
+	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
+	local data, err = ioutil.ReadFile(name)
+
+	if err == nil then
+		local str = fmt.Sprintf("%s", data)
+
+		for s in string.gmatch(str, "([^,]+)") do
+			table.insert(bd[bn].marks, tonumber(s))
+		end
+	end
 end
 
 -- called when a buffer pane is ready
@@ -334,6 +361,33 @@ end
 
 	--~ micro.InfoBar():Message(bufstr)
 --~ end
+
+function onSave(bp)
+	-- don't try to save bookmarks when it's no default buffer, but help etc.
+	if bp.Buf.Type.Kind ~= buffer.BTDefault then
+		return false
+	end
+
+	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+
+	if #bd[bp.Buf:GetName()].marks == 0 then
+		-- Delete possibly existing bookmark file
+		if goos.Stat(name) ~= nil then
+			goos.Remove(name)
+		end
+		return false
+	elseif #bd[bp.Buf:GetName()].marks == 1 then
+		-- how to otherwise get the first element?
+		for k in pairs(bd[bp.Buf:GetName()].marks) do
+			data = tostring(bd[bp.Buf:GetName()].marks[k])
+		end
+	else
+		data = table.concat(bd[bp.Buf:GetName()].marks, ",")
+	end
+
+	ioutil.WriteFile(name, data, 420)
+	return false
+end
 
 function init()
 	-- setup our commands for autocomplete
