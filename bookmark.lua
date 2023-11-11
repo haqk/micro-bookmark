@@ -17,30 +17,32 @@ local bd = {}
 function _toggle(bp)
 	local bn = bp.Buf:GetName()
 
-	local c = bp.Buf:GetActiveCursor()
-	local newy = c.Loc.Y
-	local oldy = false
+	if bd[bn] ~= nil then
+		local c = bp.Buf:GetActiveCursor()
+		local newy = c.Loc.Y
+		local oldy = false
 
-	-- remove mark if already present
-	for i,y in ipairs(bd[bn].marks) do
-		if y == newy then
-			oldy = true
-			table.remove(bd[bn].marks, i)
-			break
+		-- remove mark if already present
+		for i,y in ipairs(bd[bn].marks) do
+			if y == newy then
+				oldy = true
+				table.remove(bd[bn].marks, i)
+				break
+			end
 		end
-	end
 
-	-- add mark if not already present
-	if oldy == false then
-		table.insert(bd[bn].marks, newy)
-	end
+		-- add mark if not already present
+		if oldy == false then
+			table.insert(bd[bn].marks, newy)
+		end
 
-	-- if there are marks, sort
-	if #bd[bn].marks > 0 then
-		table.sort(bd[bn].marks)
-	end
+		-- if there are marks, sort
+		if #bd[bn].marks > 0 then
+			table.sort(bd[bn].marks)
+		end
 
-	_redraw(bp)
+		_redraw(bp)
+	end
 end
 
 -- clear all bookmarks
