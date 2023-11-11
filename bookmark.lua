@@ -1,4 +1,4 @@
-VERSION = "2.2.3"
+VERSION = "2.2.4"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
