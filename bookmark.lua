@@ -12,6 +12,7 @@ local filepath = import("path/filepath")
 local bc = 0
 -- buffer bookmark data
 local bd = {}
+local bookmark_dir = config.ConfigDir .. "/bookmarks/"
 
 -- mark/unmark current line
 function _toggle(bp)
@@ -321,7 +322,7 @@ function onBufferOpen(b)
 	}
 
 	-- read saved bookmark locations
-	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
+	name = bookmark_dir .. string.gsub(filepath.Abs(bn), "/", "%")
 	local data, err = ioutil.ReadFile(name)
 
 	if err == nil then
@@ -364,13 +365,30 @@ end
 	--~ micro.InfoBar():Message(bufstr)
 --~ end
 
+function _dirExists(path)
+    dir, err = goos.Stat(path)
+
+    if err == nil then
+        return true
+    end
+    if goos.IsNotExist(err) then
+        return false
+    end
+
+    return false
+end
+
 function onSave(bp)
 	-- don't try to save bookmarks when it's no default buffer, but help etc.
 	if bp.Buf.Type.Kind ~= buffer.BTDefault then
 		return false
 	end
 
-	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+    if not _dirExists(bookmark_dir) then
+        goos.MkdirAll(bookmark_dir, goos.ModePerm)
+    end
+
+	name =  bookmark_dir .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
 
 	if #bd[bp.Buf:GetName()].marks == 0 then
 		-- Delete possibly existing bookmark file
