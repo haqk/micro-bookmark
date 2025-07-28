@@ -296,18 +296,8 @@ function _save_pre_state(bp)
 	end
 end
 
--- called whenever new buffer is opened
-function onBufferOpen(b)
-	local bn = b:GetName()
-
-	-- skip system buffers
-	-- if bn == "No name" or bn == "Log" then return; end
-
-	-- keep count of opened buffers
-	bc = bc + 1
-
-	-- init data table
-	bd[bn] = {
+function _empty_bookmark_data()
+	return {
 		-- table of bookmarks, where each bookmark is a line number
 		marks = {},
 		-- track cursor position
@@ -319,6 +309,20 @@ function onBufferOpen(b)
 		-- track buffer lines
 		oldl = 0
 	}
+end
+
+-- called whenever new buffer is opened
+function onBufferOpen(b)
+	local bn = b:GetName()
+
+	-- skip system buffers
+	-- if bn == "No name" or bn == "Log" then return; end
+
+	-- keep count of opened buffers
+	bc = bc + 1
+
+	-- init data table
+	bd[bn] = _empty_bookmark_data()
 
 	-- read saved bookmark locations
 	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
@@ -335,7 +339,15 @@ end
 
 -- called when a buffer pane is ready
 function onBufPaneOpen(bp)
+	if bp.Buf.Type.Kind ~= buffer.BTDefault then
+		return
+	end
+
 	local bn = bp.Buf:GetName()
+
+	if bd == nil or bd[bn] == nil then
+		bd[bn] = _empty_bookmark_data()
+	end
 
 	-- init vars
 	bd[bn].oldl = bp.Buf:LinesNum()
@@ -370,21 +382,27 @@ function onSave(bp)
 		return false
 	end
 
-	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+	local bn = bp.Buf:GetName()
 
-	if #bd[bp.Buf:GetName()].marks == 0 then
+	if bd == nil or bd[bn] == nil then
+		bd[bn] = _empty_bookmark_data()
+	end
+
+	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
+
+	if #bd[bn].marks == 0 then
 		-- Delete possibly existing bookmark file
 		if goos.Stat(name) ~= nil then
 			goos.Remove(name)
 		end
 		return false
-	elseif #bd[bp.Buf:GetName()].marks == 1 then
+	elseif #bd[bn].marks == 1 then
 		-- how to otherwise get the first element?
-		for k in pairs(bd[bp.Buf:GetName()].marks) do
-			data = tostring(bd[bp.Buf:GetName()].marks[k])
+		for k in pairs(bd[bn].marks) do
+			data = tostring(bd[bn].marks[k])
 		end
 	else
-		data = table.concat(bd[bp.Buf:GetName()].marks, ",")
+		data = table.concat(bd[bn].marks, ",")
 	end
 
 	ioutil.WriteFile(name, data, 420)
