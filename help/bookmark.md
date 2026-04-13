@@ -2,7 +2,7 @@
 
 Bookmark lines to quickly jump between saved positions.
 
-Keyboard shortcuts can be changed in `~/.config/micro/bindings.json`.
+Default bindings can be overridden in `~/.config/micro/bindings.json`.
 
 ```json
 {
