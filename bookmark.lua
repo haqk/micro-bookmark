@@ -1,4 +1,4 @@
-VERSION = "2.3.6"
+VERSION = "2.3.7"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -9,7 +9,8 @@ local ioutil   = import("io/ioutil")
 local filepath = import("path/filepath")
 
 -- per-buffer state
--- bd[bn] = { marks={}, names={}, curpos={}, sel={}, onmark=false, oldl=0, buf=b }
+-- bd[bn] = { marks={}, names={}, mnemonics={}, curpos={}, sel={}, onmark=false, oldl=0, buf=b }
+-- mnemonics: table mapping letter (e.g. "A") -> line number (0-based)
 local bd      = {}
 local _picker = nil  -- active picker state
 
@@ -249,6 +250,47 @@ local function _list(bp)
     _open_picker(bp, entries, bn)
 end
 
+local function _set_mnemonic(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local y = bp.Buf:GetActiveCursor().Loc.Y
+    micro.InfoBar():Prompt("Set mnemonic (A-Z): ", "", "Bookmark", nil,
+        function(input, cancelled)
+            if cancelled or input == "" then return end
+            if bd[bn] == nil then return end
+            local letter = string.upper(string.sub(input, 1, 1))
+            if not string.match(letter, "^[A-Z]$") then
+                micro.InfoBar():Message("Mnemonic must be a letter A-Z")
+                return
+            end
+            -- remove any existing mnemonic at this letter
+            bd[bn].mnemonics[letter] = y
+            micro.InfoBar():Message("Mnemonic " .. letter .. " → line " .. (y + 1))
+        end
+    )
+end
+
+local function _goto_mnemonic(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    micro.InfoBar():Prompt("Go to mnemonic (A-Z): ", "", "Bookmark", nil,
+        function(input, cancelled)
+            if cancelled or input == "" then return end
+            if bd[bn] == nil then return end
+            local letter = string.upper(string.sub(input, 1, 1))
+            local y      = bd[bn].mnemonics[letter]
+            if y == nil then
+                micro.InfoBar():Message("No mnemonic " .. letter)
+                return
+            end
+            local c = bp.Buf:GetActiveCursor()
+            c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = y
+            bp:Relocate()
+            micro.InfoBar():Message("→ " .. letter .. ": line " .. (y + 1))
+        end
+    )
+end
+
 local function _export(bp)
     local bn = bp.Buf:GetName()
     if bd[bn] == nil or #bd[bn].marks == 0 then
@@ -333,21 +375,38 @@ end
 
 local function _load(bn)
     if not config.GetGlobalOption("bookmark.persist") then return end
+    -- load line bookmarks
     local data, err = ioutil.ReadFile(_bfile(bn))
-    if err ~= nil then return end
-    local str = fmt.Sprintf("%s", data)
-    for entry in string.gmatch(str, "([^,]+)") do
-        local colon = string.find(entry, ":", 1, true)
-        if colon then
-            local y     = tonumber(string.sub(entry, 1, colon - 1))
-            local label = string.sub(entry, colon + 1)
-            if y then
-                table.insert(bd[bn].marks, y)
-                if label ~= "" then bd[bn].names[y] = label end
+    if err == nil then
+        local str = fmt.Sprintf("%s", data)
+        for entry in string.gmatch(str, "([^,]+)") do
+            local colon = string.find(entry, ":", 1, true)
+            if colon then
+                local y     = tonumber(string.sub(entry, 1, colon - 1))
+                local label = string.sub(entry, colon + 1)
+                if y then
+                    table.insert(bd[bn].marks, y)
+                    if label ~= "" then bd[bn].names[y] = label end
+                end
+            else
+                local y = tonumber(entry)
+                if y then table.insert(bd[bn].marks, y) end
             end
-        else
-            local y = tonumber(entry)
-            if y then table.insert(bd[bn].marks, y) end
+        end
+    end
+    -- load mnemonics (letter=line pairs, comma-separated)
+    local mdata, merr = ioutil.ReadFile(_bfile(bn) .. ".mn")
+    if merr == nil then
+        local str = fmt.Sprintf("%s", mdata)
+        for entry in string.gmatch(str, "([^,]+)") do
+            local eq = string.find(entry, "=", 1, true)
+            if eq then
+                local letter = string.sub(entry, 1, eq - 1)
+                local y      = tonumber(string.sub(entry, eq + 1))
+                if string.match(letter, "^[A-Z]$") and y then
+                    bd[bn].mnemonics[letter] = y
+                end
+            end
         end
     end
 end
@@ -359,14 +418,25 @@ local function _save(bn)
     local marks = bd[bn].marks
     if #marks == 0 then
         if goos.Stat(name) ~= nil then goos.Remove(name) end
-        return
+    else
+        local parts = {}
+        for _, y in ipairs(marks) do
+            local label = bd[bn].names[y] or ""
+            table.insert(parts, label ~= "" and (y .. ":" .. label) or tostring(y))
+        end
+        ioutil.WriteFile(name, table.concat(parts, ","), 420)
     end
-    local parts = {}
-    for _, y in ipairs(marks) do
-        local label = bd[bn].names[y] or ""
-        table.insert(parts, label ~= "" and (y .. ":" .. label) or tostring(y))
+    -- save mnemonics
+    local mname  = name .. ".mn"
+    local mparts = {}
+    for letter, y in pairs(bd[bn].mnemonics) do
+        table.insert(mparts, letter .. "=" .. tostring(y))
     end
-    ioutil.WriteFile(name, table.concat(parts, ","), 420)
+    if #mparts > 0 then
+        ioutil.WriteFile(mname, table.concat(mparts, ","), 420)
+    elseif goos.Stat(mname) ~= nil then
+        goos.Remove(mname)
+    end
 end
 
 -- ── position tracking ─────────────────────────────────────────────────────────
@@ -514,7 +584,7 @@ end
 
 function onBufferOpen(b)
     local bn = b:GetName()
-    bd[bn] = {marks = {}, names = {}, curpos = {X=0, Y=0}, sel = {{Y=0},{Y=0}},
+    bd[bn] = {marks = {}, names = {}, mnemonics = {}, curpos = {X=0, Y=0}, sel = {{Y=0},{Y=0}},
               onmark = false, oldl = 0, buf = b}
     _load(bn)
 end
@@ -557,6 +627,8 @@ function init()
     config.MakeCommand("listAllBookmarks",  _list_all,        config.OptionComplete)
     config.MakeCommand("bookmarkPattern",    _bookmark_pattern, config.OptionComplete)
     config.MakeCommand("exportBookmarks",   _export,           config.OptionComplete)
+    config.MakeCommand("setMnemonic",       _set_mnemonic,     config.OptionComplete)
+    config.MakeCommand("gotoMnemonic",      _goto_mnemonic,    config.OptionComplete)
 
     config.TryBindKey("Ctrl-F2",      "command:toggleBookmark",   true)
     config.TryBindKey("CtrlShift-F2", "command:clearBookmarks",   true)
