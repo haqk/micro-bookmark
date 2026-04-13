@@ -1,4 +1,4 @@
-VERSION = "2.3.2"
+VERSION = "2.3.3"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -244,6 +244,45 @@ local function _list(bp)
     _open_picker(bp, entries, bn)
 end
 
+local function _bookmark_pattern(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    micro.InfoBar():Prompt("Bookmark pattern: ", "", "Bookmark", nil,
+        function(input, cancelled)
+            if cancelled or input == "" then return end
+            if bd[bn] == nil then return end
+            local matched = 0
+            local total   = bp.Buf:LinesNum()
+            local ok, err = pcall(function()
+                for i = 0, total - 1 do
+                    local line = bp.Buf:Line(i)
+                    if string.find(line, input) then
+                        local already = false
+                        for _, y in ipairs(bd[bn].marks) do
+                            if y == i then already = true; break end
+                        end
+                        if not already then
+                            table.insert(bd[bn].marks, i)
+                            matched = matched + 1
+                        end
+                    end
+                end
+            end)
+            if not ok then
+                micro.InfoBar():Message("Invalid pattern: " .. tostring(err))
+                return
+            end
+            if matched > 0 then
+                table.sort(bd[bn].marks)
+                _redraw(bp)
+                micro.InfoBar():Message("Bookmarked " .. matched .. " line" .. (matched == 1 and "" or "s"))
+            else
+                micro.InfoBar():Message("No lines matched")
+            end
+        end
+    )
+end
+
 local function _list_all(bp)
     local entries = {}
     for bn, data in pairs(bd) do
@@ -461,7 +500,8 @@ function init()
     config.MakeCommand("nameBookmark",     _name_bookmark,  config.OptionComplete)
     config.MakeCommand("gotoBookmark",     _goto_bookmark,  config.OptionComplete)
     config.MakeCommand("listBookmarks",    _list,           config.OptionComplete)
-    config.MakeCommand("listAllBookmarks", _list_all,       config.OptionComplete)
+    config.MakeCommand("listAllBookmarks",  _list_all,        config.OptionComplete)
+    config.MakeCommand("bookmarkPattern",   _bookmark_pattern, config.OptionComplete)
 
     config.TryBindKey("Ctrl-F2",      "command:toggleBookmark",   true)
     config.TryBindKey("CtrlShift-F2", "command:clearBookmarks",   true)
