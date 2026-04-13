@@ -1,4 +1,4 @@
-VERSION = "2.3.5"
+VERSION = "2.3.6"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -16,6 +16,11 @@ local _picker = nil  -- active picker state
 -- ── helpers ───────────────────────────────────────────────────────────────────
 
 local function _bdir()
+    local scope = config.GetGlobalOption("bookmark.scope")
+    if scope == "project" then
+        local cwd, err = goos.Getwd()
+        if err == nil then return cwd .. "/.bookmarks" end
+    end
     return config.ConfigDir .. "/plug/bookmark"
 end
 
@@ -540,6 +545,7 @@ end
 function init()
     config.RegisterGlobalOption("bookmark", "gutter_style", "info")
     config.RegisterGlobalOption("bookmark", "persist",       true)
+    config.RegisterGlobalOption("bookmark", "scope",         "global")
 
     config.MakeCommand("toggleBookmark",   _toggle,         config.OptionComplete)
     config.MakeCommand("nextBookmark",     _next,           config.OptionComplete)
