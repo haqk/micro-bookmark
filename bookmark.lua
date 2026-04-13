@@ -1,4 +1,4 @@
-VERSION = "2.3.8"
+VERSION = "2.3.9"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -9,8 +9,16 @@ local ioutil   = import("io/ioutil")
 local filepath = import("path/filepath")
 
 -- per-buffer state
--- bd[bn] = { marks={}, names={}, mnemonics={}, curpos={}, sel={}, onmark=false, oldl=0, buf=b }
--- mnemonics: table mapping letter (e.g. "A") -> line number (0-based)
+-- bd[bn] = {
+--   lists     = { ["default"] = {marks={}, names={}}, ["mylist"] = {marks={}, names={}}, ... },
+--   active    = "default",   -- name of the active list
+--   mnemonics = {},          -- letter → line (shared across lists)
+--   curpos    = {X=0, Y=0},
+--   sel       = {{Y=0},{Y=0}},
+--   onmark    = false,
+--   oldl      = 0,
+--   buf       = b
+-- }
 local bd      = {}
 local _picker = nil  -- active picker state
 
@@ -40,23 +48,29 @@ local function _gutter(bp, msg, line)
     bp.Buf:AddMessage(buffer.NewMessageAtLine("bookmark", msg, line, _mt()))
 end
 
+-- returns the active list table {marks={}, names={}} for the given buffer name
+local function _active(bn)
+    return bd[bn].lists[bd[bn].active]
+end
+
 local function _dedupe(bp)
     local bn   = bp.Buf:GetName()
     local seen = {}
     local res  = {}
-    for _, y in ipairs(bd[bn].marks) do
+    for _, y in ipairs(_active(bn).marks) do
         if not seen[y] then res[#res+1] = y; seen[y] = true end
     end
-    bd[bn].marks = res
+    _active(bn).marks = res
 end
 
 local function _redraw(bp)
-    local bn = bp.Buf:GetName()
+    local bn  = bp.Buf:GetName()
+    local act = _active(bn)
     bp.Buf:ClearMessages("bookmark")
-    if #bd[bn].marks > 0 then
-        for i, y in ipairs(bd[bn].marks) do
-            local name  = bd[bn].names[y]
-            local label = "bookmark (" .. i .. "/" .. #bd[bn].marks .. ")"
+    if #act.marks > 0 then
+        for i, y in ipairs(act.marks) do
+            local name  = act.names[y]
+            local label = "bookmark (" .. i .. "/" .. #act.marks .. ")"
             if name and name ~= "" then label = label .. " " .. name end
             _gutter(bp, label, y + 1)
         end
@@ -68,22 +82,23 @@ end
 -- ── core commands ─────────────────────────────────────────────────────────────
 
 local function _toggle(bp)
-    local bn = bp.Buf:GetName()
+    local bn  = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    local c     = bp.Buf:GetActiveCursor()
-    local newy  = c.Loc.Y
+    local act  = _active(bn)
+    local c    = bp.Buf:GetActiveCursor()
+    local newy = c.Loc.Y
     local found = false
-    for i, y in ipairs(bd[bn].marks) do
+    for i, y in ipairs(act.marks) do
         if y == newy then
             found = true
-            table.remove(bd[bn].marks, i)
-            bd[bn].names[newy] = nil
+            table.remove(act.marks, i)
+            act.names[newy] = nil
             break
         end
     end
     if not found then
-        table.insert(bd[bn].marks, newy)
-        table.sort(bd[bn].marks)
+        table.insert(act.marks, newy)
+        table.sort(act.marks)
         -- auto-label from single-line selection if present
         if c:HasSelection() then
             local sel = -c.CurSelection
@@ -93,7 +108,7 @@ local function _toggle(bp)
                 local x1    = math.min(sel[1].X, sel[2].X)
                 local x2    = math.max(sel[1].X, sel[2].X)
                 local label = string.sub(bp.Buf:Line(newy), x1 + 1, x2)
-                if label ~= "" then bd[bn].names[newy] = label end
+                if label ~= "" then act.names[newy] = label end
             end
         end
     end
@@ -101,17 +116,19 @@ local function _toggle(bp)
 end
 
 local function _clear(bp)
-    local bn = bp.Buf:GetName()
+    local bn  = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    local n = #bd[bn].marks
+    local act = _active(bn)
+    local n   = #act.marks
     if n == 0 then return end
     local plural = n == 1 and "bookmark" or "bookmarks"
     micro.InfoBar():Prompt("Clear " .. n .. " " .. plural .. "? (y/n): ", "", "Bookmark", nil,
         function(input, cancelled)
             if not cancelled and (input == "y" or input == "Y") then
                 if bd[bn] == nil then return end
-                bd[bn].marks = {}
-                bd[bn].names = {}
+                local a = _active(bn)
+                a.marks = {}
+                a.names = {}
                 _redraw(bp)
             end
         end
@@ -119,30 +136,34 @@ local function _clear(bp)
 end
 
 local function _next(bp)
-    local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then return end
+    local bn  = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then return end
     local c      = bp.Buf:GetActiveCursor()
     local jumped = false
-    for _, y in ipairs(bd[bn].marks) do
+    for _, y in ipairs(act.marks) do
         if y > c.Loc.Y then
             c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = y
             jumped = true; break
         end
     end
     if not jumped then
-        c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = bd[bn].marks[1]
+        c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = act.marks[1]
     end
     bp:Relocate()
 end
 
 local function _prev(bp)
-    local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then return end
+    local bn  = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then return end
     local c         = bp.Buf:GetActiveCursor()
     local noneAbove = true
-    local i         = #bd[bn].marks
+    local i         = #act.marks
     while true do
-        local y = bd[bn].marks[i]
+        local y = act.marks[i]
         if y < c.Loc.Y then
             c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = y
             noneAbove = false; i = 1
@@ -151,44 +172,50 @@ local function _prev(bp)
         if i == 0 then break end
     end
     if noneAbove then
-        c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = bd[bn].marks[#bd[bn].marks]
+        c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = act.marks[#act.marks]
     end
     bp:Relocate()
 end
 
 local function _name_bookmark(bp)
-    local bn = bp.Buf:GetName()
+    local bn  = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    local y     = bp.Buf:GetActiveCursor().Loc.Y
+    local act = _active(bn)
+    local y   = bp.Buf:GetActiveCursor().Loc.Y
     local found = false
-    for _, my in ipairs(bd[bn].marks) do
+    for _, my in ipairs(act.marks) do
         if my == y then found = true; break end
     end
     if not found then
         micro.InfoBar():Message("No bookmark on current line")
         return
     end
-    local current = bd[bn].names[y] or ""
+    local current = act.names[y] or ""
     micro.InfoBar():Prompt("Bookmark name: ", current, "Bookmark", nil, function(input, cancelled)
         if not cancelled then
-            bd[bn].names[y] = (input ~= "" and input or nil)
+            if bd[bn] == nil then return end
+            _active(bn).names[y] = (input ~= "" and input or nil)
             _redraw(bp)
         end
     end)
 end
 
 local function _goto_bookmark(bp)
-    local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then
+    local bn  = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then
         micro.InfoBar():Message("No bookmarks")
         return
     end
     micro.InfoBar():Prompt("Bookmark #: ", "", "Bookmark",
         function(input)
+            if bd[bn] == nil then return end
+            local a = _active(bn)
             local n = tonumber(input)
-            if n and bd[bn].marks[n] then
-                local y    = bd[bn].marks[n]
-                local name = bd[bn].names[y] or ""
+            if n and a.marks[n] then
+                local y    = a.marks[n]
+                local name = a.names[y] or ""
                 local msg  = "→ " .. n .. ": line " .. (y + 1)
                 if name ~= "" then msg = msg .. "  " .. name end
                 micro.InfoBar():Message(msg)
@@ -196,10 +223,12 @@ local function _goto_bookmark(bp)
         end,
         function(input, cancelled)
             if not cancelled then
+                if bd[bn] == nil then return end
+                local a = _active(bn)
                 local n = tonumber(input)
-                if n and bd[bn].marks[n] then
+                if n and a.marks[n] then
                     local c = bp.Buf:GetActiveCursor()
-                    c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = bd[bn].marks[n]
+                    c:ResetSelection(); c.Loc.X = 0; c.Loc.Y = a.marks[n]
                     bp:Relocate()
                 end
             end
@@ -238,14 +267,16 @@ local function _open_picker(bp, entries, source_bn)
 end
 
 local function _list(bp)
-    local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then
+    local bn  = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then
         micro.InfoBar():Message("No bookmarks")
         return
     end
     local entries = {}
-    for _, y in ipairs(bd[bn].marks) do
-        table.insert(entries, {y = y, names = bd[bn].names, buf = bd[bn].buf, bufname = nil})
+    for _, y in ipairs(act.marks) do
+        table.insert(entries, {y = y, names = act.names, buf = bd[bn].buf, bufname = nil})
     end
     _open_picker(bp, entries, bn)
 end
@@ -263,7 +294,6 @@ local function _set_mnemonic(bp)
                 micro.InfoBar():Message("Mnemonic must be a letter A-Z")
                 return
             end
-            -- remove any existing mnemonic at this letter
             bd[bn].mnemonics[letter] = y
             micro.InfoBar():Message("Mnemonic " .. letter .. " → line " .. (y + 1))
         end
@@ -292,14 +322,16 @@ local function _goto_mnemonic(bp)
 end
 
 local function _grep_bookmarks(bp)
-    local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then
+    local bn  = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then
         micro.InfoBar():Message("No bookmarks to search")
         return
     end
     local lines = {}
-    for i, y in ipairs(bd[bn].marks) do
-        local name    = bd[bn].names[y] or ""
+    for i, y in ipairs(act.marks) do
+        local name    = act.names[y] or ""
         local content = bp.Buf:Line(y)
         local prefix  = fmt.Sprintf("%3d  line %-5d  ", i, y + 1)
         if name ~= "" then prefix = prefix .. "[" .. name .. "]  " end
@@ -313,25 +345,27 @@ local function _grep_bookmarks(bp)
 end
 
 local function _export(bp)
-    local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then
+    local bn  = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then
         micro.InfoBar():Message("No bookmarks to export")
         return
     end
     local short   = bn:match("([^/]+)$") or bn
-    local header  = "# Bookmarks — " .. short .. "\n\n"
+    local header  = "# Bookmarks — " .. short .. "  [list: " .. bd[bn].active .. "]\n\n"
     header = header .. fmt.Sprintf("| %-4s | %-6s | %-20s | %s |\n", "#", "Line", "Name", "Content")
     header = header .. fmt.Sprintf("|%s|%s|%s|%s|\n", string.rep("-", 6), string.rep("-", 8),
                                    string.rep("-", 22), string.rep("-", 54))
     local rows = {}
-    for i, y in ipairs(bd[bn].marks) do
-        local name    = bd[bn].names[y] or ""
+    for i, y in ipairs(act.marks) do
+        local name    = act.names[y] or ""
         local content = string.gsub(bp.Buf:Line(y), "^%s+", "")
         if #content > 50 then content = string.sub(content, 1, 50) .. "…" end
         table.insert(rows, fmt.Sprintf("| %-4d | %-6d | %-20s | %s |", i, y + 1, name, content))
     end
-    local text    = header .. table.concat(rows, "\n") .. "\n"
-    local expbuf  = buffer.NewBuffer(text, "bookmark-export")
+    local text   = header .. table.concat(rows, "\n") .. "\n"
+    local expbuf = buffer.NewBuffer(text, "bookmark-export")
     expbuf.Type.Scratch  = true
     expbuf.Type.Readonly = true
     bp:HSplitBuf(expbuf)
@@ -344,6 +378,7 @@ local function _bookmark_pattern(bp)
         function(input, cancelled)
             if cancelled or input == "" then return end
             if bd[bn] == nil then return end
+            local act     = _active(bn)
             local matched = 0
             local total   = bp.Buf:LinesNum()
             local ok, err = pcall(function()
@@ -351,11 +386,11 @@ local function _bookmark_pattern(bp)
                     local line = bp.Buf:Line(i)
                     if string.find(line, input) then
                         local already = false
-                        for _, y in ipairs(bd[bn].marks) do
+                        for _, y in ipairs(act.marks) do
                             if y == i then already = true; break end
                         end
                         if not already then
-                            table.insert(bd[bn].marks, i)
+                            table.insert(act.marks, i)
                             matched = matched + 1
                         end
                     end
@@ -366,7 +401,7 @@ local function _bookmark_pattern(bp)
                 return
             end
             if matched > 0 then
-                table.sort(bd[bn].marks)
+                table.sort(act.marks)
                 _redraw(bp)
                 micro.InfoBar():Message("Bookmarked " .. matched .. " line" .. (matched == 1 and "" or "s"))
             else
@@ -379,9 +414,16 @@ end
 local function _list_all(bp)
     local entries = {}
     for bn, data in pairs(bd) do
-        if #data.marks > 0 then
-            for _, y in ipairs(data.marks) do
-                table.insert(entries, {y = y, names = data.names, buf = data.buf, bufname = bn})
+        for listname, lst in pairs(data.lists) do
+            if #lst.marks > 0 then
+                for _, y in ipairs(lst.marks) do
+                    local display = bn
+                    if listname ~= "default" then display = bn .. " [" .. listname .. "]" end
+                    -- actual_bn is the real buffer name used for pane lookup;
+                    -- bufname is the display name shown in the picker
+                    table.insert(entries, {y = y, names = lst.names, buf = data.buf,
+                                           bufname = display, actual_bn = bn})
+                end
             end
         end
     end
@@ -392,30 +434,150 @@ local function _list_all(bp)
     _open_picker(bp, entries, bp.Buf:GetName())
 end
 
+-- ── list management ───────────────────────────────────────────────────────────
+
+local function _create_list(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    micro.InfoBar():Prompt("New list name: ", "", "Bookmark", nil,
+        function(input, cancelled)
+            if cancelled or input == "" then return end
+            if bd[bn] == nil then return end
+            local name = string.lower(string.gsub(input, "%s+", "_"))
+            if bd[bn].lists[name] then
+                micro.InfoBar():Message("List '" .. name .. "' already exists")
+                return
+            end
+            bd[bn].lists[name] = {marks = {}, names = {}}
+            bd[bn].active = name
+            _redraw(bp)
+            micro.InfoBar():Message("Created and switched to list '" .. name .. "'")
+        end
+    )
+end
+
+local function _switch_list(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    -- build a list of available names for the prompt hint
+    local names = {}
+    for k in pairs(bd[bn].lists) do table.insert(names, k) end
+    table.sort(names)
+    micro.InfoBar():Prompt("Switch to list [" .. table.concat(names, ", ") .. "]: ",
+        bd[bn].active, "Bookmark", nil,
+        function(input, cancelled)
+            if cancelled or input == "" then return end
+            if bd[bn] == nil then return end
+            if not bd[bn].lists[input] then
+                micro.InfoBar():Message("No list named '" .. input .. "'")
+                return
+            end
+            bd[bn].active = input
+            _redraw(bp)
+            local act = _active(bn)
+            micro.InfoBar():Message("Switched to list '" .. input .. "'  (" .. #act.marks .. " bookmarks)")
+        end
+    )
+end
+
+local function _delete_list(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local cur = bd[bn].active
+    if cur == "default" then
+        micro.InfoBar():Message("Cannot delete the default list")
+        return
+    end
+    local n = #_active(bn).marks
+    local plural = n == 1 and "bookmark" or "bookmarks"
+    micro.InfoBar():Prompt("Delete list '" .. cur .. "' (" .. n .. " " .. plural .. ")? (y/n): ",
+        "", "Bookmark", nil,
+        function(input, cancelled)
+            if not cancelled and (input == "y" or input == "Y") then
+                if bd[bn] == nil then return end
+                bd[bn].lists[cur] = nil
+                bd[bn].active = "default"
+                _redraw(bp)
+                micro.InfoBar():Message("Deleted list '" .. cur .. "'")
+            end
+        end
+    )
+end
+
+local function _list_lists(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local lines = {}
+    local names = {}
+    for k in pairs(bd[bn].lists) do table.insert(names, k) end
+    table.sort(names)
+    for _, name in ipairs(names) do
+        local lst    = bd[bn].lists[name]
+        local active = name == bd[bn].active and " ◀" or ""
+        table.insert(lines, fmt.Sprintf("  %-20s  %d bookmarks%s", name, #lst.marks, active))
+    end
+    local text    = "Bookmark lists — " .. (bn:match("([^/]+)$") or bn) .. "\n\n" .. table.concat(lines, "\n") .. "\n"
+    local listbuf = buffer.NewBuffer(text, "bookmark-lists")
+    listbuf.Type.Readonly = true
+    listbuf.Type.Scratch  = true
+    bp:HSplitBuf(listbuf)
+end
+
 -- ── persistence ───────────────────────────────────────────────────────────────
+
+-- file for a named list: default uses the base path (backward compat), others get a suffix
+local function _lfile(bn, listname)
+    if listname == "default" then return _bfile(bn) end
+    return _bfile(bn) .. ".list." .. listname
+end
+
+local function _load_list(bn, listname)
+    local data, err = ioutil.ReadFile(_lfile(bn, listname))
+    if err ~= nil then return end
+    local lst = bd[bn].lists[listname]
+    if lst == nil then
+        lst = {marks = {}, names = {}}
+        bd[bn].lists[listname] = lst
+    end
+    local str = fmt.Sprintf("%s", data)
+    for entry in string.gmatch(str, "([^,]+)") do
+        local colon = string.find(entry, ":", 1, true)
+        if colon then
+            local y     = tonumber(string.sub(entry, 1, colon - 1))
+            local label = string.sub(entry, colon + 1)
+            if y then
+                table.insert(lst.marks, y)
+                if label ~= "" then lst.names[y] = label end
+            end
+        else
+            local y = tonumber(entry)
+            if y then table.insert(lst.marks, y) end
+        end
+    end
+end
 
 local function _load(bn)
     if not config.GetGlobalOption("bookmark.persist") then return end
-    -- load line bookmarks
-    local data, err = ioutil.ReadFile(_bfile(bn))
+    -- load default list (backward compat path)
+    _load_list(bn, "default")
+    -- discover additional lists by scanning for .list.* sidecar files
+    local base  = _bfile(bn)
+    local dir   = _bdir()
+    local files, err = ioutil.ReadDir(dir)
     if err == nil then
-        local str = fmt.Sprintf("%s", data)
-        for entry in string.gmatch(str, "([^,]+)") do
-            local colon = string.find(entry, ":", 1, true)
-            if colon then
-                local y     = tonumber(string.sub(entry, 1, colon - 1))
-                local label = string.sub(entry, colon + 1)
-                if y then
-                    table.insert(bd[bn].marks, y)
-                    if label ~= "" then bd[bn].names[y] = label end
+        local prefix = base .. ".list."
+        for _, fi in ipairs(files) do
+            local fname = dir .. "/" .. fi:Name()
+            if string.sub(fname, 1, #prefix) == prefix then
+                local listname = string.sub(fname, #prefix + 1)
+                -- skip mnemonics and other known suffixes
+                if listname ~= "" and not string.find(listname, ".", 1, true) then
+                    _load_list(bn, listname)
                 end
-            else
-                local y = tonumber(entry)
-                if y then table.insert(bd[bn].marks, y) end
             end
         end
     end
-    -- load mnemonics (letter=line pairs, comma-separated)
+    -- load mnemonics (shared across all lists)
     local mdata, merr = ioutil.ReadFile(_bfile(bn) .. ".mn")
     if merr == nil then
         local str = fmt.Sprintf("%s", mdata)
@@ -432,23 +594,29 @@ local function _load(bn)
     end
 end
 
+local function _save_list(bn, listname)
+    goos.MkdirAll(_bdir(), 493)  -- 0755
+    local lst  = bd[bn].lists[listname]
+    local name = _lfile(bn, listname)
+    if lst == nil or #lst.marks == 0 then
+        if goos.Stat(name) ~= nil then goos.Remove(name) end
+        return
+    end
+    local parts = {}
+    for _, y in ipairs(lst.marks) do
+        local label = lst.names[y] or ""
+        table.insert(parts, label ~= "" and (y .. ":" .. label) or tostring(y))
+    end
+    ioutil.WriteFile(name, table.concat(parts, ","), 420)
+end
+
 local function _save(bn)
     if not config.GetGlobalOption("bookmark.persist") then return end
-    goos.MkdirAll(_bdir(), 493)  -- 0755
-    local name  = _bfile(bn)
-    local marks = bd[bn].marks
-    if #marks == 0 then
-        if goos.Stat(name) ~= nil then goos.Remove(name) end
-    else
-        local parts = {}
-        for _, y in ipairs(marks) do
-            local label = bd[bn].names[y] or ""
-            table.insert(parts, label ~= "" and (y .. ":" .. label) or tostring(y))
-        end
-        ioutil.WriteFile(name, table.concat(parts, ","), 420)
+    for listname in pairs(bd[bn].lists) do
+        _save_list(bn, listname)
     end
     -- save mnemonics
-    local mname  = name .. ".mn"
+    local mname  = _bfile(bn) .. ".mn"
     local mparts = {}
     for letter, y in pairs(bd[bn].mnemonics) do
         table.insert(mparts, letter .. "=" .. tostring(y))
@@ -468,7 +636,8 @@ local function _save_pre_state(bp)
     if not (bn and bd[bn]) then return end
     bd[bn].curpos = -bp.Cursor.Loc
     bd[bn].onmark = false
-    for _, y in ipairs(bd[bn].marks) do
+    local act = _active(bn)
+    for _, y in ipairs(act.marks) do
         if y == bd[bn].curpos.Y then bd[bn].onmark = true; break end
     end
     if bp.Cursor:HasSelection() then
@@ -479,7 +648,7 @@ local function _save_pre_state(bp)
 end
 
 local function _update(bp)
-    local bn = bp.Buf:GetName()
+    local bn  = bp.Buf:GetName()
     if bd[bn] == nil then return end
     local newl = bp.Buf:LinesNum()
     local diff = math.abs(newl - bd[bn].oldl)
@@ -490,16 +659,19 @@ local function _update(bp)
         local curY = bd[bn].curpos and bd[bn].curpos.Y
         local s1   = bd[bn].sel and bd[bn].sel[1] and bd[bn].sel[1].Y
         local s2   = bd[bn].sel and bd[bn].sel[2] and bd[bn].sel[2].Y
-        for i, y in ipairs(bd[bn].marks) do
-            if diff > 0 and curY and y >= curY or diff < 0 and y > c.Loc.Y then
-                local newy = (s1 and s2 and s1 < y and s2 > y)
-                    and s1
-                    or  math.max(0, y + diff)
-                if bd[bn].names[y] and newy ~= y then
-                    bd[bn].names[newy] = bd[bn].names[y]
-                    bd[bn].names[y]    = nil
+        -- update all lists
+        for _, lst in pairs(bd[bn].lists) do
+            for i, y in ipairs(lst.marks) do
+                if diff > 0 and curY and y >= curY or diff < 0 and y > c.Loc.Y then
+                    local newy = (s1 and s2 and s1 < y and s2 > y)
+                        and s1
+                        or  math.max(0, y + diff)
+                    if lst.names[y] and newy ~= y then
+                        lst.names[newy] = lst.names[y]
+                        lst.names[y]    = nil
+                    end
+                    lst.marks[i] = newy
                 end
-                bd[bn].marks[i] = newy
             end
         end
         _dedupe(bp)
@@ -513,12 +685,14 @@ end
 local function _check_cursor_on_mark(bp)
     if bp == nil then return end
     local bn = bp.Buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then return end
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then return end
     local y = bp.Buf:GetActiveCursor().Loc.Y
-    for i, my in ipairs(bd[bn].marks) do
+    for i, my in ipairs(act.marks) do
         if my == y then
-            local name = bd[bn].names[y] or ""
-            local msg  = "Bookmark " .. i .. "/" .. #bd[bn].marks
+            local name = act.names[y] or ""
+            local msg  = "Bookmark " .. i .. "/" .. #act.marks
             if name ~= "" then msg = msg .. "  " .. name end
             micro.InfoBar():Message(msg)
             return
@@ -566,13 +740,15 @@ function preInsertNewline(bp)
     if e then
         local tgt_bp = _picker.source_bp
         -- for global list, find the correct pane if it differs from source
-        if e.bufname and e.bufname ~= _picker.source_bn then
+        -- use actual_bn (real buffer name) for pane lookup, not the display name
+        local lookup_bn = e.actual_bn or e.bufname
+        if lookup_bn and lookup_bn ~= _picker.source_bn then
             local tabs = micro.Tabs()
             if tabs and tabs.List then
                 for _, tab in ipairs(tabs.List) do
                     if tab and tab.Panes then
                         for _, pane in ipairs(tab.Panes) do
-                            if pane and pane.Buf and pane.Buf:GetName() == e.bufname then
+                            if pane and pane.Buf and pane.Buf:GetName() == lookup_bn then
                                 tgt_bp = pane; break
                             end
                         end
@@ -591,22 +767,32 @@ end
 -- status line token $(bookmarkpos) → "[BM 2/5]"
 function bookmarkpos(buf)
     local bn = buf:GetName()
-    if bd[bn] == nil or #bd[bn].marks == 0 then return "" end
+    if bd[bn] == nil then return "" end
+    local act = _active(bn)
+    if #act.marks == 0 then return "" end
     local bp = micro.CurPane()
-    if bp == nil then return "[BM ?/" .. #bd[bn].marks .. "]" end
+    if bp == nil then return "[BM ?/" .. #act.marks .. "]" end
     local y   = bp.Buf:GetActiveCursor().Loc.Y
-    local pos = #bd[bn].marks
-    for i, my in ipairs(bd[bn].marks) do
+    local pos = #act.marks
+    for i, my in ipairs(act.marks) do
         if my == y then pos = i; break
         elseif my > y then pos = math.max(1, i - 1); break end
     end
-    return "[BM " .. pos .. "/" .. #bd[bn].marks .. "]"
+    return "[BM " .. pos .. "/" .. #act.marks .. "]"
 end
 
 function onBufferOpen(b)
     local bn = b:GetName()
-    bd[bn] = {marks = {}, names = {}, mnemonics = {}, curpos = {X=0, Y=0}, sel = {{Y=0},{Y=0}},
-              onmark = false, oldl = 0, buf = b}
+    bd[bn] = {
+        lists     = {["default"] = {marks = {}, names = {}}},
+        active    = "default",
+        mnemonics = {},
+        curpos    = {X=0, Y=0},
+        sel       = {{Y=0},{Y=0}},
+        onmark    = false,
+        oldl      = 0,
+        buf       = b
+    }
     _load(bn)
 end
 
@@ -638,19 +824,23 @@ function init()
     config.RegisterGlobalOption("bookmark", "persist",       true)
     config.RegisterGlobalOption("bookmark", "scope",         "global")
 
-    config.MakeCommand("toggleBookmark",   _toggle,         config.OptionComplete)
-    config.MakeCommand("nextBookmark",     _next,           config.OptionComplete)
-    config.MakeCommand("prevBookmark",     _prev,           config.OptionComplete)
-    config.MakeCommand("clearBookmarks",   _clear,          config.OptionComplete)
-    config.MakeCommand("nameBookmark",     _name_bookmark,  config.OptionComplete)
-    config.MakeCommand("gotoBookmark",     _goto_bookmark,  config.OptionComplete)
-    config.MakeCommand("listBookmarks",    _list,           config.OptionComplete)
-    config.MakeCommand("listAllBookmarks",  _list_all,        config.OptionComplete)
-    config.MakeCommand("bookmarkPattern",    _bookmark_pattern, config.OptionComplete)
+    config.MakeCommand("toggleBookmark",    _toggle,           config.OptionComplete)
+    config.MakeCommand("nextBookmark",      _next,             config.OptionComplete)
+    config.MakeCommand("prevBookmark",      _prev,             config.OptionComplete)
+    config.MakeCommand("clearBookmarks",    _clear,            config.OptionComplete)
+    config.MakeCommand("nameBookmark",      _name_bookmark,    config.OptionComplete)
+    config.MakeCommand("gotoBookmark",      _goto_bookmark,    config.OptionComplete)
+    config.MakeCommand("listBookmarks",     _list,             config.OptionComplete)
+    config.MakeCommand("listAllBookmarks",  _list_all,         config.OptionComplete)
+    config.MakeCommand("bookmarkPattern",   _bookmark_pattern, config.OptionComplete)
     config.MakeCommand("grepBookmarks",     _grep_bookmarks,   config.OptionComplete)
     config.MakeCommand("exportBookmarks",   _export,           config.OptionComplete)
     config.MakeCommand("setMnemonic",       _set_mnemonic,     config.OptionComplete)
     config.MakeCommand("gotoMnemonic",      _goto_mnemonic,    config.OptionComplete)
+    config.MakeCommand("createList",        _create_list,      config.OptionComplete)
+    config.MakeCommand("switchList",        _switch_list,      config.OptionComplete)
+    config.MakeCommand("deleteList",        _delete_list,      config.OptionComplete)
+    config.MakeCommand("listLists",         _list_lists,       config.OptionComplete)
 
     config.TryBindKey("Ctrl-F2",      "command:toggleBookmark",   true)
     config.TryBindKey("CtrlShift-F2", "command:clearBookmarks",   true)

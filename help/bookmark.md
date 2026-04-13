@@ -14,6 +14,10 @@ Bookmark lines to quickly jump between saved positions.
 | `gotoBookmark`       | —                | Jump to a bookmark by number                       |
 | `listBookmarks`      | Alt-F2           | Open picker for current buffer                     |
 | `listAllBookmarks`   | —                | Open picker across all open buffers                |
+| `createList`         | —                | Create a new named bookmark list and switch to it  |
+| `switchList`         | —                | Switch the active bookmark list                    |
+| `deleteList`         | —                | Delete the current list (not allowed for default)  |
+| `listLists`          | —                | Open a pane showing all lists and bookmark counts  |
 
 ## Bookmark picker
 
@@ -26,6 +30,21 @@ Run `nameBookmark` on a bookmarked line to attach a label. The label shows in th
 ## Status line
 
 Add `$(bookmarkpos)` to `statusformatl` or `statusformatr` to show `[BM 2/5]` in the status bar.
+
+## Bookmark lists
+
+Each buffer starts with a single `default` list. Create additional lists to group bookmarks by concern:
+
+```
+> createList   — prompt for a name, create and switch to it
+> switchList   — switch active list (picker shows all lists)
+> deleteList   — delete the current non-default list
+> listLists    — show all lists with bookmark counts
+```
+
+Navigation, toggle, clear, and the picker all operate on the **active** list only. `listAllBookmarks` shows bookmarks from all lists across all buffers.
+
+Lists are persisted separately: the default list uses the standard bookmark file; additional lists use a `.list.<name>` sidecar file alongside it.
 
 ## Options
 

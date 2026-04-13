@@ -38,6 +38,18 @@ $ micro -plugin install bookmark
 
 # open bookmark picker across all open buffers
 > listAllBookmarks
+
+# create a named bookmark list and switch to it
+> createList
+
+# switch the active bookmark list
+> switchList
+
+# delete the current (non-default) list
+> deleteList
+
+# show all lists with bookmark counts
+> listLists
 ```
 
 ## Bookmark picker
@@ -45,6 +57,21 @@ $ micro -plugin install bookmark
 `listBookmarks` opens a split pane listing all bookmarks with their line number and a content preview. Press **Enter** to jump to the selected bookmark, **Ctrl-Q** to close the picker.
 
 `listAllBookmarks` does the same across every open buffer.
+
+## Bookmark lists
+
+Each buffer has a `default` bookmark list. Create additional named lists to group bookmarks by concern (e.g. `todo`, `review`, `debug`):
+
+```
+> createList    — prompt for a name, create and switch to it
+> switchList    — switch the active list
+> deleteList    — delete the current list (default is protected)
+> listLists     — show all lists with bookmark counts
+```
+
+All navigation (`nextBookmark`, `prevBookmark`), `toggleBookmark`, `clearBookmarks`, and `listBookmarks` operate on the **active** list. `listAllBookmarks` shows bookmarks from every list in every open buffer.
+
+Lists are persisted per-file: the default list uses the standard bookmark file; additional lists use a `.list.<name>` sidecar file in the same directory.
 
 ## Named bookmarks
 
