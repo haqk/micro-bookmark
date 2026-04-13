@@ -60,10 +60,10 @@ Add `$(bookmarkpos)` to your `statusformatl` or `statusformatr` setting to show 
 
 ## Options
 
-| Option | Values | Default | Description |
-|--------|--------|---------|-------------|
-| `bookmark.gutter_style` | `info`, `warning`, `error` | `info` | Colour of the gutter indicator |
-| `bookmark.persist` | `true`, `false` | `true` | Save and restore bookmarks across sessions |
+| Option                   | Values                       | Default | Description                                   |
+|--------------------------|------------------------------|---------|-----------------------------------------------|
+| `bookmark.gutter_style`  | `info`, `warning`, `error`   | `info`  | Colour of the gutter indicator                |
+| `bookmark.persist`       | `true`, `false`              | `true`  | Save and restore bookmarks across sessions    |
 
 ```
 > set bookmark.gutter_style warning
