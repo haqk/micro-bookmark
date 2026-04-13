@@ -28,11 +28,9 @@ $ micro -plugin install bookmark
 > prevBookmark
 ```
 
-## Troubleshooting
+## Customising keyboard shortcuts
 
-If the default keyboard shortcuts do not work, it is most likely because it is already in use by another program.
-
-Keyboard shortcuts can be changed in `~/.config/micro/bindings.json`.
+Default bindings can be overridden in `~/.config/micro/bindings.json`:
 
 ```json
 {

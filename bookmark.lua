@@ -1,4 +1,4 @@
-VERSION = "2.2.5"
+VERSION = "2.2.6"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
@@ -142,6 +142,8 @@ end
 function onInsertNewline(bp)
 	local bp = micro.CurPane()
 	local bn = bp.Buf:GetName()
+
+	if bd[bn] == nil then return end
 
 	-- if cursor is not at start of bookmarked line enter is pressed, don't move the bookmark
 	if bd[bn].curpos.X ~= 0 and bd[bn].onmark then
@@ -334,6 +336,9 @@ end
 function onBufPaneOpen(bp)
 	local bn = bp.Buf:GetName()
 
+	-- skip system buffers that didn't go through onBufferOpen
+	if bd[bn] == nil then return end
+
 	-- init vars
 	bd[bn].oldl = bp.Buf:LinesNum()
 	_save_pre_state(bp)
@@ -392,10 +397,10 @@ function init()
 	config.MakeCommand("clearBookmarks", _clear, config.OptionComplete)
 
 	-- setup default bindings
-	config.TryBindKey("Ctrl-F2", "command:toggleBookmark", false)
-	config.TryBindKey("CtrlShift-F2", "command:clearBookmarks", false)
-	config.TryBindKey("F2", "command:nextBookmark", false)
-	config.TryBindKey("Shift-F2", "command:prevBookmark", false)
+	config.TryBindKey("Ctrl-F2", "command:toggleBookmark", true)
+	config.TryBindKey("CtrlShift-F2", "command:clearBookmarks", true)
+	config.TryBindKey("F2", "command:nextBookmark", true)
+	config.TryBindKey("Shift-F2", "command:prevBookmark", true)
 
 	-- add our help topic
     config.AddRuntimeFile("bookmark", config.RTHelp, "help/bookmark.md")
