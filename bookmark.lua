@@ -1,4 +1,4 @@
-VERSION = "2.3.4"
+VERSION = "2.3.5"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -412,6 +412,29 @@ local function _update(bp)
 end
 
 -- ── event handlers ────────────────────────────────────────────────────────────
+
+-- show bookmark info in InfoBar when cursor moves onto a bookmarked line
+local function _check_cursor_on_mark(bp)
+    if bp == nil then return end
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil or #bd[bn].marks == 0 then return end
+    local y = bp.Buf:GetActiveCursor().Loc.Y
+    for i, my in ipairs(bd[bn].marks) do
+        if my == y then
+            local name = bd[bn].names[y] or ""
+            local msg  = "Bookmark " .. i .. "/" .. #bd[bn].marks
+            if name ~= "" then msg = msg .. "  " .. name end
+            micro.InfoBar():Message(msg)
+            return
+        end
+    end
+end
+
+function onCursorUp(bp)   _check_cursor_on_mark(bp) end
+function onCursorDown(bp) _check_cursor_on_mark(bp) end
+function onMousePress(bp) _check_cursor_on_mark(bp) end
+function onPageUp(bp)     _check_cursor_on_mark(bp) end
+function onPageDown(bp)   _check_cursor_on_mark(bp) end
 
 function onBeforeTextEvent(b, t)
     _save_pre_state(micro.CurPane())
