@@ -4,16 +4,16 @@ Bookmark lines to quickly jump between saved positions.
 
 ## Commands
 
-| Command | Default binding | Action |
-|---------|----------------|--------|
-| `toggleBookmark` | Ctrl-F2 | Mark/unmark current line |
-| `nextBookmark` | F2 | Jump to next bookmark |
-| `prevBookmark` | Shift-F2 | Jump to previous bookmark |
-| `clearBookmarks` | CtrlShift-F2 | Clear all bookmarks in current buffer |
-| `nameBookmark` | — | Attach a label to the bookmark on the current line |
-| `gotoBookmark` | — | Jump to a bookmark by number |
-| `listBookmarks` | Alt-F2 | Open picker for current buffer |
-| `listAllBookmarks` | — | Open picker across all open buffers |
+| Command              | Default binding  | Action                                             |
+|----------------------|------------------|----------------------------------------------------|
+| `toggleBookmark`     | Ctrl-F2          | Mark/unmark current line                           |
+| `nextBookmark`       | F2               | Jump to next bookmark                              |
+| `prevBookmark`       | Shift-F2         | Jump to previous bookmark                          |
+| `clearBookmarks`     | CtrlShift-F2     | Clear all bookmarks in current buffer              |
+| `nameBookmark`       | —                | Attach a label to the bookmark on the current line |
+| `gotoBookmark`       | —                | Jump to a bookmark by number                       |
+| `listBookmarks`      | Alt-F2           | Open picker for current buffer                     |
+| `listAllBookmarks`   | —                | Open picker across all open buffers                |
 
 ## Bookmark picker
 
