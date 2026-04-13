@@ -1,4 +1,4 @@
-VERSION = "2.3.3"
+VERSION = "2.3.4"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -242,6 +242,31 @@ local function _list(bp)
         table.insert(entries, {y = y, names = bd[bn].names, buf = bd[bn].buf, bufname = nil})
     end
     _open_picker(bp, entries, bn)
+end
+
+local function _export(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil or #bd[bn].marks == 0 then
+        micro.InfoBar():Message("No bookmarks to export")
+        return
+    end
+    local short   = bn:match("([^/]+)$") or bn
+    local header  = "# Bookmarks — " .. short .. "\n\n"
+    header = header .. fmt.Sprintf("| %-4s | %-6s | %-20s | %s |\n", "#", "Line", "Name", "Content")
+    header = header .. fmt.Sprintf("|%s|%s|%s|%s|\n", string.rep("-", 6), string.rep("-", 8),
+                                   string.rep("-", 22), string.rep("-", 54))
+    local rows = {}
+    for i, y in ipairs(bd[bn].marks) do
+        local name    = bd[bn].names[y] or ""
+        local content = string.gsub(bp.Buf:Line(y), "^%s+", "")
+        if #content > 50 then content = string.sub(content, 1, 50) .. "…" end
+        table.insert(rows, fmt.Sprintf("| %-4d | %-6d | %-20s | %s |", i, y + 1, name, content))
+    end
+    local text    = header .. table.concat(rows, "\n") .. "\n"
+    local expbuf  = buffer.NewBuffer(text, "bookmark-export")
+    expbuf.Type.Scratch  = true
+    expbuf.Type.Readonly = true
+    bp:HSplitBuf(expbuf)
 end
 
 local function _bookmark_pattern(bp)
@@ -501,7 +526,8 @@ function init()
     config.MakeCommand("gotoBookmark",     _goto_bookmark,  config.OptionComplete)
     config.MakeCommand("listBookmarks",    _list,           config.OptionComplete)
     config.MakeCommand("listAllBookmarks",  _list_all,        config.OptionComplete)
-    config.MakeCommand("bookmarkPattern",   _bookmark_pattern, config.OptionComplete)
+    config.MakeCommand("bookmarkPattern",    _bookmark_pattern, config.OptionComplete)
+    config.MakeCommand("exportBookmarks",   _export,           config.OptionComplete)
 
     config.TryBindKey("Ctrl-F2",      "command:toggleBookmark",   true)
     config.TryBindKey("CtrlShift-F2", "command:clearBookmarks",   true)
