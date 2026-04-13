@@ -1,4 +1,4 @@
-VERSION = "2.2.4"
+VERSION = "2.2.5"
 
 local micro = import("micro")
 local buffer = import("micro/buffer")
@@ -8,8 +8,6 @@ local goos = import("os")
 local ioutil = import("io/ioutil")
 local filepath = import("path/filepath")
 
--- buffer count
-local bc = 0
 -- buffer bookmark data
 local bd = {}
 
@@ -50,10 +48,9 @@ function _clear(bp)
 	local bn = bp.Buf:GetName()
 
 	bd[bn].marks = {}
-	collectgarbage()
 
 	bp.Buf:ClearMessages("bookmark")
-	_gutter(bp, #bd[bn].marks.."", 0)
+	_gutter(bp, "", 0)
 end
 
 -- jump to next bookmark
@@ -196,24 +193,27 @@ function _update(bp)
 	local diff = math.abs(newl - bd[bn].oldl)
 
 	-- only update if lines have been added or removed
-	if diff then
+	if diff ~= 0 then
 		if newl < bd[bn].oldl then
 			diff = -diff
 		end
 		bd[bn].oldl = newl
 
 		local c = bp.Buf:GetActiveCursor()
+		local curY = bd[bn].curpos and bd[bn].curpos.Y
+		local sel1Y = bd[bn].sel and bd[bn].sel[1] and bd[bn].sel[1].Y
+		local sel2Y = bd[bn].sel and bd[bn].sel[2] and bd[bn].sel[2].Y
 		-- add or subtract lines for all marks below current line
 		for i,y in ipairs(bd[bn].marks) do
 			-- update bookmarks above cursor line when lines have been removed
 			-- or update bookmarks at or below cursor line when lines have been added
-			if diff > 0 and y >= bd[bn].curpos.Y or diff < 0 and y > c.Loc.Y then
+			if diff > 0 and curY and y >= curY or diff < 0 and y > c.Loc.Y then
 				-- move bookmarks in text selection to first line of selection
-				if bd[bn].sel[1].Y < y and bd[bn].sel[2].Y > y then
-					bd[bn].marks[i] = bd[bn].sel[1].Y
+				if sel1Y and sel2Y and sel1Y < y and sel2Y > y then
+					bd[bn].marks[i] = sel1Y
 				else
 				-- otherwise just add the difference
-					bd[bn].marks[i] = y + diff
+					bd[bn].marks[i] = math.max(0, y + diff)
 				end
 			end
 		end
@@ -303,9 +303,6 @@ function onBufferOpen(b)
 	-- skip system buffers
 	-- if bn == "No name" or bn == "Log" then return; end
 
-	-- keep count of opened buffers
-	bc = bc + 1
-
 	-- init data table
 	bd[bn] = {
 		-- table of bookmarks, where each bookmark is a line number
@@ -321,7 +318,7 @@ function onBufferOpen(b)
 	}
 
 	-- read saved bookmark locations
-	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
+	local name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bn), "/", "%")
 	local data, err = ioutil.ReadFile(name)
 
 	if err == nil then
@@ -347,8 +344,6 @@ end
 
 -- called when buffer is closed
 function onQuit(bp)
-	-- decrement buffer count
-	bc = bc - 1
 	-- clear buffer bookmark data
 	bd[bp.Buf:GetName()] = nil
 
@@ -370,7 +365,8 @@ function onSave(bp)
 		return false
 	end
 
-	name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+	local name = os.getenv("HOME") .. "/.config/micro/plug/bookmark/" .. string.gsub(filepath.Abs(bp.Buf:GetName()), "/", "%")
+	local data
 
 	if #bd[bp.Buf:GetName()].marks == 0 then
 		-- Delete possibly existing bookmark file
@@ -379,10 +375,7 @@ function onSave(bp)
 		end
 		return false
 	elseif #bd[bp.Buf:GetName()].marks == 1 then
-		-- how to otherwise get the first element?
-		for k in pairs(bd[bp.Buf:GetName()].marks) do
-			data = tostring(bd[bp.Buf:GetName()].marks[k])
-		end
+		data = tostring(bd[bp.Buf:GetName()].marks[1])
 	else
 		data = table.concat(bd[bp.Buf:GetName()].marks, ",")
 	end
