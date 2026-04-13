@@ -1,4 +1,4 @@
-VERSION = "2.3.1"
+VERSION = "2.3.2"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -64,7 +64,8 @@ end
 local function _toggle(bp)
     local bn = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    local newy  = bp.Buf:GetActiveCursor().Loc.Y
+    local c     = bp.Buf:GetActiveCursor()
+    local newy  = c.Loc.Y
     local found = false
     for i, y in ipairs(bd[bn].marks) do
         if y == newy then
@@ -77,6 +78,18 @@ local function _toggle(bp)
     if not found then
         table.insert(bd[bn].marks, newy)
         table.sort(bd[bn].marks)
+        -- auto-label from single-line selection if present
+        if c:HasSelection() then
+            local sel = -c.CurSelection
+            local y1  = sel[1] and sel[1].Y
+            local y2  = sel[2] and sel[2].Y
+            if y1 == newy and y2 == newy then
+                local x1    = math.min(sel[1].X, sel[2].X)
+                local x2    = math.max(sel[1].X, sel[2].X)
+                local label = string.sub(bp.Buf:Line(newy), x1 + 1, x2)
+                if label ~= "" then bd[bn].names[newy] = label end
+            end
+        end
     end
     _redraw(bp)
 end
