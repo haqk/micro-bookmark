@@ -1,4 +1,4 @@
-VERSION = "2.3.7"
+VERSION = "2.3.8"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -289,6 +289,27 @@ local function _goto_mnemonic(bp)
             micro.InfoBar():Message("→ " .. letter .. ": line " .. (y + 1))
         end
     )
+end
+
+local function _grep_bookmarks(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil or #bd[bn].marks == 0 then
+        micro.InfoBar():Message("No bookmarks to search")
+        return
+    end
+    local lines = {}
+    for i, y in ipairs(bd[bn].marks) do
+        local name    = bd[bn].names[y] or ""
+        local content = bp.Buf:Line(y)
+        local prefix  = fmt.Sprintf("%3d  line %-5d  ", i, y + 1)
+        if name ~= "" then prefix = prefix .. "[" .. name .. "]  " end
+        table.insert(lines, prefix .. content)
+    end
+    local grepbuf = buffer.NewBuffer(table.concat(lines, "\n"), "bookmark-search")
+    grepbuf.Type.Readonly = true
+    grepbuf.Type.Scratch  = true
+    bp:HSplitBuf(grepbuf)
+    micro.InfoBar():Message("Ctrl-F to search  Ctrl-Q to close")
 end
 
 local function _export(bp)
@@ -626,6 +647,7 @@ function init()
     config.MakeCommand("listBookmarks",    _list,           config.OptionComplete)
     config.MakeCommand("listAllBookmarks",  _list_all,        config.OptionComplete)
     config.MakeCommand("bookmarkPattern",    _bookmark_pattern, config.OptionComplete)
+    config.MakeCommand("grepBookmarks",     _grep_bookmarks,   config.OptionComplete)
     config.MakeCommand("exportBookmarks",   _export,           config.OptionComplete)
     config.MakeCommand("setMnemonic",       _set_mnemonic,     config.OptionComplete)
     config.MakeCommand("gotoMnemonic",      _goto_mnemonic,    config.OptionComplete)
