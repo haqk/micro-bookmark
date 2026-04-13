@@ -1,4 +1,4 @@
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -84,9 +84,19 @@ end
 local function _clear(bp)
     local bn = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    bd[bn].marks = {}
-    bd[bn].names = {}
-    _redraw(bp)
+    local n = #bd[bn].marks
+    if n == 0 then return end
+    local plural = n == 1 and "bookmark" or "bookmarks"
+    micro.InfoBar():Prompt("Clear " .. n .. " " .. plural .. "? (y/n): ", "", "Bookmark", nil,
+        function(input, cancelled)
+            if not cancelled and (input == "y" or input == "Y") then
+                if bd[bn] == nil then return end
+                bd[bn].marks = {}
+                bd[bn].names = {}
+                _redraw(bp)
+            end
+        end
+    )
 end
 
 local function _next(bp)
