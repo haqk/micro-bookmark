@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lua:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua and luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.4 luarocks
+          sudo luarocks install luacheck
+      - name: Parse-check bookmark.lua
+        run: lua5.4 -e 'local f, err = loadfile("bookmark.lua"); if not f then error(err) end'
+      - name: Lint bookmark.lua
+        run: luacheck bookmark.lua
+
+  repo-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repo.json
+        run: jq -e . repo.json > /dev/null
+      - name: Verify VERSION matches top of repo.json
+        run: |
+          v_lua=$(grep -oP '^VERSION\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' bookmark.lua)
+          v_top=$(jq -r '.[0].Versions[0].Version' repo.json)
+          if [ "$v_lua" != "$v_top" ]; then
+            echo "::error::VERSION ($v_lua) != repo.json[0].Versions[0].Version ($v_top)"
+            exit 1
+          fi
+          echo "VERSION match: $v_lua"

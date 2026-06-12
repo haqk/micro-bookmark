@@ -1,0 +1,56 @@
+name: Bug report
+description: Something doesn't work as expected in the bookmark plugin
+labels: [bug]
+body:
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: Output of `> bookmarkVersion`
+      placeholder: "2.3.10"
+    validations:
+      required: true
+  - type: input
+    id: micro-version
+    attributes:
+      label: micro version
+      description: Output of `micro -version`
+      placeholder: "2.0.13"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Ubuntu 24.04 / macOS 14 / Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal sequence of micro commands or keystrokes that triggers the bug
+      placeholder: |
+        1. Open `foo.txt`
+        2. Run `> toggleBookmark` on line 5
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log output (optional)
+      description: Run `micro -debug` and paste any relevant output from `~/.config/micro/log.txt`
+      render: shell

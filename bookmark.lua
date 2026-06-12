@@ -19,8 +19,9 @@ local filepath = import("path/filepath")
 --   oldl      = 0,
 --   buf       = b
 -- }
-local bd      = {}
-local _picker = nil  -- active picker state
+local bd          = {}
+local _pickers    = {}  -- picker pane name → {source_bp, source_bn, entries}
+local _picker_seq = 0
 
 -- ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ local function _bdir()
 end
 
 local function _bfile(bn)
-    return _bdir() .. "/" .. string.gsub(filepath.Abs(bn), "/", "%")
+    return _bdir() .. "/" .. string.gsub(filepath.Abs(bn), "/", "%%")
 end
 
 local function _mt()
@@ -258,8 +259,10 @@ local function _build_picker_lines(entries)
 end
 
 local function _open_picker(bp, entries, source_bn)
-    _picker = {source_bp = bp, source_bn = source_bn, entries = entries}
-    local listbuf = buffer.NewBuffer(_build_picker_lines(entries), "Bookmarks")
+    _picker_seq = _picker_seq + 1
+    local pname = "Bookmarks-" .. _picker_seq
+    _pickers[pname] = {source_bp = bp, source_bn = source_bn, entries = entries}
+    local listbuf = buffer.NewBuffer(_build_picker_lines(entries), pname)
     listbuf.Type.Readonly = true
     listbuf.Type.Scratch  = true
     bp:HSplitBuf(listbuf)
@@ -374,7 +377,7 @@ end
 local function _bookmark_pattern(bp)
     local bn = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    micro.InfoBar():Prompt("Bookmark pattern: ", "", "Bookmark", nil,
+    micro.InfoBar():Prompt("Bookmark Lua pattern: ", "", "Bookmark", nil,
         function(input, cancelled)
             if cancelled or input == "" then return end
             if bd[bn] == nil then return end
@@ -444,7 +447,11 @@ local function _create_list(bp)
             if cancelled or input == "" then return end
             if bd[bn] == nil then return end
             local name = string.lower(string.gsub(input, "%s+", "_"))
-            if bd[bn].lists[name] then
+            if string.find(name, "[^%w_-]") then
+                micro.InfoBar():Message("List names may only contain letters, digits, _ and -")
+                return
+            end
+            if name == "default" or bd[bn].lists[name] then
                 micro.InfoBar():Message("List '" .. name .. "' already exists")
                 return
             end
@@ -497,6 +504,8 @@ local function _delete_list(bp)
                 if bd[bn] == nil then return end
                 bd[bn].lists[cur] = nil
                 bd[bn].active = "default"
+                local sidecar = _lfile(bn, cur)
+                if goos.Stat(sidecar) ~= nil then goos.Remove(sidecar) end
                 _redraw(bp)
                 micro.InfoBar():Message("Deleted list '" .. cur .. "'")
             end
@@ -525,6 +534,113 @@ end
 
 -- ── persistence ───────────────────────────────────────────────────────────────
 
+-- minimal JSON for sidecar files (schema v1)
+local function _jstr(s)
+    s = string.gsub(s, "\\", "\\\\")
+    s = string.gsub(s, '"', '\\"')
+    s = string.gsub(s, "\n", "\\n")
+    s = string.gsub(s, "\r", "\\r")
+    s = string.gsub(s, "\t", "\\t")
+    return '"' .. s .. '"'
+end
+
+local function _json_decode(s)
+    local pos = 1
+    local function skip()
+        while pos <= #s do
+            local c = string.sub(s, pos, pos)
+            if c == " " or c == "\t" or c == "\n" or c == "\r" then pos = pos + 1
+            else break end
+        end
+    end
+    local parse
+    local function parse_str()
+        if string.sub(s, pos, pos) ~= '"' then return nil end
+        pos = pos + 1
+        local buf = {}
+        while pos <= #s do
+            local c = string.sub(s, pos, pos)
+            if c == '"' then pos = pos + 1; return table.concat(buf) end
+            if c == "\\" then
+                pos = pos + 1
+                local nc = string.sub(s, pos, pos)
+                if     nc == "n" then table.insert(buf, "\n")
+                elseif nc == "r" then table.insert(buf, "\r")
+                elseif nc == "t" then table.insert(buf, "\t")
+                else                  table.insert(buf, nc) end
+                pos = pos + 1
+            else
+                table.insert(buf, c); pos = pos + 1
+            end
+        end
+        return nil
+    end
+    local function parse_num()
+        local start = pos
+        while pos <= #s do
+            local c = string.sub(s, pos, pos)
+            if string.match(c, "[%d%-%.eE+]") then pos = pos + 1 else break end
+        end
+        return tonumber(string.sub(s, start, pos - 1))
+    end
+    parse = function()
+        skip()
+        if pos > #s then return nil end
+        local c = string.sub(s, pos, pos)
+        if c == "{" then
+            pos = pos + 1; local t = {}; skip()
+            if string.sub(s, pos, pos) == "}" then pos = pos + 1; return t end
+            while pos <= #s do
+                skip(); local k = parse_str(); skip()
+                if string.sub(s, pos, pos) == ":" then pos = pos + 1 end
+                t[k] = parse(); skip()
+                local nc = string.sub(s, pos, pos)
+                if nc == "," then pos = pos + 1
+                else if nc == "}" then pos = pos + 1 end; return t end
+            end
+            return t
+        elseif c == "[" then
+            pos = pos + 1; local t = {}; skip()
+            if string.sub(s, pos, pos) == "]" then pos = pos + 1; return t end
+            while pos <= #s do
+                table.insert(t, parse()); skip()
+                local nc = string.sub(s, pos, pos)
+                if nc == "," then pos = pos + 1
+                else if nc == "]" then pos = pos + 1 end; return t end
+            end
+            return t
+        elseif c == '"' then return parse_str()
+        elseif c == "t" then pos = pos + 4; return true
+        elseif c == "f" then pos = pos + 5; return false
+        elseif c == "n" then pos = pos + 4; return nil
+        else return parse_num() end
+    end
+    local ok, result = pcall(parse)
+    if ok then return result end
+    return nil
+end
+
+local function _encode_list(lst)
+    local marks = {}
+    for _, y in ipairs(lst.marks) do
+        local name = lst.names[y]
+        if name and name ~= "" then
+            table.insert(marks, '{"y":' .. y .. ',"name":' .. _jstr(name) .. "}")
+        else
+            table.insert(marks, '{"y":' .. y .. "}")
+        end
+    end
+    return '{"v":1,"marks":[' .. table.concat(marks, ",") .. "]}"
+end
+
+local function _encode_mnemonics(mn)
+    local parts = {}
+    for letter, y in pairs(mn) do
+        table.insert(parts, _jstr(letter) .. ":" .. tostring(y))
+    end
+    return '{"v":1,"mn":{' .. table.concat(parts, ",") .. "}}"
+end
+
 -- file for a named list: default uses the base path (backward compat), others get a suffix
 local function _lfile(bn, listname)
     if listname == "default" then return _bfile(bn) end
@@ -539,7 +655,22 @@ local function _load_list(bn, listname)
         lst = {marks = {}, names = {}}
         bd[bn].lists[listname] = lst
     end
-    local str = fmt.Sprintf("%s", data)
+    local str   = fmt.Sprintf("%s", data)
+    local first = string.match(str, "^%s*(.)")
+    if first == "{" then
+        local obj = _json_decode(str)
+        if obj and obj.marks then
+            for i = 1, #obj.marks do
+                local m = obj.marks[i]
+                if m and m.y then
+                    table.insert(lst.marks, m.y)
+                    if m.name and m.name ~= "" then lst.names[m.y] = m.name end
+                end
+            end
+        end
+        return
+    end
+    -- legacy v0 CSV fallback
     for entry in string.gmatch(str, "([^,]+)") do
         local colon = string.find(entry, ":", 1, true)
         if colon then
@@ -571,8 +702,7 @@ local function _load(bn)
             local fname = dir .. "/" .. fi:Name()
             if string.sub(fname, 1, #prefix) == prefix then
                 local listname = string.sub(fname, #prefix + 1)
-                -- skip mnemonics and other known suffixes
-                if listname ~= "" and not string.find(listname, ".", 1, true) then
+                if listname ~= "" and not string.find(listname, "[^%w_-]") then
                     _load_list(bn, listname)
                 end
             end
@@ -581,14 +711,26 @@ local function _load(bn)
     -- load mnemonics (shared across all lists)
     local mdata, merr = ioutil.ReadFile(_bfile(bn) .. ".mn")
     if merr == nil then
-        local str = fmt.Sprintf("%s", mdata)
-        for entry in string.gmatch(str, "([^,]+)") do
-            local eq = string.find(entry, "=", 1, true)
-            if eq then
-                local letter = string.sub(entry, 1, eq - 1)
-                local y      = tonumber(string.sub(entry, eq + 1))
-                if string.match(letter, "^[A-Z]$") and y then
-                    bd[bn].mnemonics[letter] = y
+        local str   = fmt.Sprintf("%s", mdata)
+        local first = string.match(str, "^%s*(.)")
+        if first == "{" then
+            local obj = _json_decode(str)
+            if obj and obj.mn then
+                for letter, y in pairs(obj.mn) do
+                    if string.match(letter, "^[A-Z]$") and type(y) == "number" then
+                        bd[bn].mnemonics[letter] = y
+                    end
+                end
+            end
+        else
+            for entry in string.gmatch(str, "([^,]+)") do
+                local eq = string.find(entry, "=", 1, true)
+                if eq then
+                    local letter = string.sub(entry, 1, eq - 1)
+                    local y      = tonumber(string.sub(entry, eq + 1))
+                    if string.match(letter, "^[A-Z]$") and y then
+                        bd[bn].mnemonics[letter] = y
+                    end
                 end
             end
         end
@@ -603,12 +745,7 @@ local function _save_list(bn, listname)
         if goos.Stat(name) ~= nil then goos.Remove(name) end
         return
     end
-    local parts = {}
-    for _, y in ipairs(lst.marks) do
-        local label = lst.names[y] or ""
-        table.insert(parts, label ~= "" and (y .. ":" .. label) or tostring(y))
-    end
-    ioutil.WriteFile(name, table.concat(parts, ","), 420)
+    ioutil.WriteFile(name, _encode_list(lst), 420)
 end
 
 local function _save(bn)
@@ -616,14 +753,11 @@ local function _save(bn)
     for listname in pairs(bd[bn].lists) do
         _save_list(bn, listname)
     end
-    -- save mnemonics
-    local mname  = _bfile(bn) .. ".mn"
-    local mparts = {}
-    for letter, y in pairs(bd[bn].mnemonics) do
-        table.insert(mparts, letter .. "=" .. tostring(y))
-    end
-    if #mparts > 0 then
-        ioutil.WriteFile(mname, table.concat(mparts, ","), 420)
+    local mname = _bfile(bn) .. ".mn"
+    local any   = false
+    for _ in pairs(bd[bn].mnemonics) do any = true; break end
+    if any then
+        ioutil.WriteFile(mname, _encode_mnemonics(bd[bn].mnemonics), 420)
     elseif goos.Stat(mname) ~= nil then
         goos.Remove(mname)
     end
@@ -663,7 +797,7 @@ local function _update(bp)
         -- update all lists
         for _, lst in pairs(bd[bn].lists) do
             for i, y in ipairs(lst.marks) do
-                if diff > 0 and curY and y >= curY or diff < 0 and y > c.Loc.Y then
+                if (diff > 0 and curY and y >= curY) or (diff < 0 and y > c.Loc.Y) then
                     local newy = (s1 and s2 and s1 < y and s2 > y)
                         and s1
                         or  math.max(0, y + diff)
@@ -701,11 +835,23 @@ local function _check_cursor_on_mark(bp)
     end
 end
 
-function onCursorUp(bp)   _check_cursor_on_mark(bp) end
-function onCursorDown(bp) _check_cursor_on_mark(bp) end
-function onMousePress(bp) _check_cursor_on_mark(bp) end
-function onPageUp(bp)     _check_cursor_on_mark(bp) end
-function onPageDown(bp)   _check_cursor_on_mark(bp) end
+for _, ev in ipairs({
+    "onCursorUp", "onCursorDown", "onCursorLeft", "onCursorRight",
+    "onPageUp", "onPageDown", "onHalfPageUp", "onHalfPageDown",
+    "onCursorStart", "onCursorEnd", "onStartOfLine", "onEndOfLine",
+    "onStartOfText", "onEndOfText",
+    "onWordRight", "onWordLeft",
+    "onParagraphPrevious", "onParagraphNext",
+    "onMousePress",
+    "onFind", "onFindNext", "onFindPrevious",
+    "onSelectUp", "onSelectDown", "onSelectLeft", "onSelectRight",
+    "onSelectWordRight", "onSelectWordLeft",
+    "onSelectToStart", "onSelectToEnd",
+    "onSelectToStartOfLine", "onSelectToEndOfLine",
+    "onSelectLine",
+}) do
+    _G[ev] = function(bp) _check_cursor_on_mark(bp) end
+end
 
 function onBeforeTextEvent(b, t)
     _save_pre_state(micro.CurPane())
@@ -732,18 +878,18 @@ function onBackspace(bp)     _update(bp) end
 function onUndo(bp)          _update(bp) end
 function onRedo(bp)          _update(bp) end
 
--- intercept Enter in the Bookmarks picker pane
+-- intercept Enter in any open picker pane
 function preInsertNewline(bp)
-    if _picker == nil then return true end
-    if bp.Buf:GetName() ~= "Bookmarks" then return true end
+    local p = _pickers[bp.Buf:GetName()]
+    if p == nil then return true end
     local row = bp.Buf:GetActiveCursor().Loc.Y
-    local e   = _picker.entries[row + 1]
+    local e   = p.entries[row + 1]
     if e then
-        local tgt_bp = _picker.source_bp
+        local tgt_bp = p.source_bp
         -- for global list, find the correct pane if it differs from source
         -- use actual_bn (real buffer name) for pane lookup, not the display name
         local lookup_bn = e.actual_bn or e.bufname
-        if lookup_bn and lookup_bn ~= _picker.source_bn then
+        if lookup_bn and lookup_bn ~= p.source_bn then
             local tabs = micro.Tabs()
             if tabs and tabs.List then
                 for _, tab in ipairs(tabs.List) do
@@ -792,7 +938,8 @@ function onBufferOpen(b)
         sel       = {{Y=0},{Y=0}},
         onmark    = false,
         oldl      = 0,
-        buf       = b
+        buf       = b,
+        panes     = 0
     }
     _load(bn)
 end
@@ -800,16 +947,21 @@ end
 function onBufPaneOpen(bp)
     local bn = bp.Buf:GetName()
     if bd[bn] == nil then return end
-    bd[bn].oldl = bp.Buf:LinesNum()
+    bd[bn].panes = (bd[bn].panes or 0) + 1
+    bd[bn].oldl  = bp.Buf:LinesNum()
     _save_pre_state(bp)
     _redraw(bp)
 end
 
 function onQuit(bp)
     local bn = bp.Buf:GetName()
-    if bn == "Bookmarks" then _picker = nil end
-    if _picker and _picker.source_bn == bn then _picker = nil end
-    bd[bn] = nil
+    if _pickers[bn] then _pickers[bn] = nil end
+    for pname, p in pairs(_pickers) do
+        if p.source_bn == bn then _pickers[pname] = nil end
+    end
+    if bd[bn] == nil then return end
+    bd[bn].panes = (bd[bn].panes or 1) - 1
+    if bd[bn].panes <= 0 then bd[bn] = nil end
 end
 
 function onSave(bp)
@@ -842,6 +994,9 @@ function init()
     config.MakeCommand("switchList",        _switch_list,      config.OptionComplete)
     config.MakeCommand("deleteList",        _delete_list,      config.OptionComplete)
     config.MakeCommand("listLists",         _list_lists,       config.OptionComplete)
+    config.MakeCommand("bookmarkVersion",
+        function() micro.InfoBar():Message("bookmark v" .. VERSION) end,
+        config.OptionComplete)
 
     config.TryBindKey("Ctrl-F2",      "command:toggleBookmark",   true)
     config.TryBindKey("CtrlShift-F2", "command:clearBookmarks",   true)

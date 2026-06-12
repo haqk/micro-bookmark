@@ -50,6 +50,24 @@ $ micro -plugin install bookmark
 
 # show all lists with bookmark counts
 > listLists
+
+# set a mnemonic letter (A-Z) to the current line
+> setMnemonic
+
+# jump to a mnemonic letter
+> gotoMnemonic
+
+# bookmark every line matching a Lua pattern
+> bookmarkPattern
+
+# open a searchable split listing all bookmarks
+> grepBookmarks
+
+# open a markdown table of bookmarks in a scratch buffer
+> exportBookmarks
+
+# show the installed plugin version
+> bookmarkVersion
 ```
 
 ## Bookmark picker
@@ -77,6 +95,19 @@ Lists are persisted per-file: the default list uses the standard bookmark file; 
 
 Use `nameBookmark` on any bookmarked line to attach a label. The label appears in the gutter alongside the bookmark indicator and in the picker.
 
+## Mnemonics
+
+`setMnemonic` assigns a letter `A`-`Z` to the current line; `gotoMnemonic` jumps to a previously set letter. Mnemonics are shared across all of a buffer's lists and persist alongside bookmarks.
+
+## Pattern marking
+
+`bookmarkPattern` prompts for a Lua pattern and bookmarks every line in the buffer that matches it. Invalid patterns are reported in the InfoBar.
+
+## Search and export
+
+- `grepBookmarks` opens a split pane listing every bookmark with its content; use micro's `Ctrl-F` to search within it.
+- `exportBookmarks` opens a markdown table in a scratch buffer — handy for copying or saving as a checklist.
+
 ## Status line
 
 Add `$(bookmarkpos)` to your `statusformatl` or `statusformatr` setting to show the current bookmark position, e.g. `[BM 2/5]`:
@@ -87,14 +118,16 @@ Add `$(bookmarkpos)` to your `statusformatl` or `statusformatr` setting to show 
 
 ## Options
 
-| Option                   | Values                       | Default | Description                                   |
-|--------------------------|------------------------------|---------|-----------------------------------------------|
-| `bookmark.gutter_style`  | `info`, `warning`, `error`   | `info`  | Colour of the gutter indicator                |
-| `bookmark.persist`       | `true`, `false`              | `true`  | Save and restore bookmarks across sessions    |
+| Option                   | Values                       | Default  | Description                                                  |
+|--------------------------|------------------------------|----------|--------------------------------------------------------------|
+| `bookmark.gutter_style`  | `info`, `warning`, `error`   | `info`   | Colour of the gutter indicator                               |
+| `bookmark.persist`       | `true`, `false`              | `true`   | Save and restore bookmarks across sessions                   |
+| `bookmark.scope`         | `global`, `project`          | `global` | `global` stores in `~/.config/micro/plug/bookmark/`; `project` stores in `<cwd>/.bookmarks/` |
 
 ```
 > set bookmark.gutter_style warning
 > set bookmark.persist false
+> set bookmark.scope project
 ```
 
 ## Customising keyboard shortcuts
