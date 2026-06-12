@@ -1,4 +1,4 @@
-VERSION = "2.3.9"
+VERSION = "2.3.10"
 
 local micro    = import("micro")
 local buffer   = import("micro/buffer")
@@ -566,7 +566,8 @@ local function _load(bn)
     local files, err = ioutil.ReadDir(dir)
     if err == nil then
         local prefix = base .. ".list."
-        for _, fi in ipairs(files) do
+        for i = 1, #files do
+            local fi = files[i]
             local fname = dir .. "/" .. fi:Name()
             if string.sub(fname, 1, #prefix) == prefix then
                 local listname = string.sub(fname, #prefix + 1)
