@@ -14,7 +14,7 @@ jobs:
   lua:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Lua and luacheck
         run: |
           sudo apt-get update
@@ -30,7 +30,7 @@ jobs:
   repo-json:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate repo.json
         run: jq -e . repo.json > /dev/null
       - name: Verify VERSION matches top of repo.json
