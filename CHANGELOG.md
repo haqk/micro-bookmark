@@ -17,6 +17,7 @@ All notable changes to this project are documented in this file. The format foll
 - `bookmarkPattern` prompt is labelled "Lua pattern" to set the right expectation.
 
 ### Fixed
+- `deleteList` no longer crashes on confirmation; the helper that locates the sidecar file is now in scope at the call site.
 - `_update` line-shift predicate now uses explicit parentheses; previous precedence was correct but easy to misread.
 - `_bfile` no longer relies on undefined Lua `gsub` replacement behaviour (`"%"` → `"%%"`).
 - `deleteList` now removes the on-disk sidecar instead of leaving an orphan file.
