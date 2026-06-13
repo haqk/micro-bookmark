@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [2.3.11] - 2026-06-13
+
 ### Added
 - `bookmarkVersion` command — prints the installed plugin version in the InfoBar.
 - README sections covering `setMnemonic`/`gotoMnemonic`, `bookmarkPattern`, `grepBookmarks`, `exportBookmarks`, and the `bookmark.scope` option.
@@ -53,7 +55,8 @@ All notable changes to this project are documented in this file. The format foll
 ### Added
 - Cursor-on-mark InfoBar message when the cursor lands on a bookmarked line.
 
-[Unreleased]: https://github.com/haqk/micro-bookmark/compare/v2.3.10...HEAD
+[Unreleased]: https://github.com/haqk/micro-bookmark/compare/v2.3.11...HEAD
+[2.3.11]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.11
 [2.3.10]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.10
 [2.3.9]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.9
 [2.3.8]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.8
