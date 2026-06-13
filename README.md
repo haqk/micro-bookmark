@@ -198,6 +198,8 @@ When `bookmark.persist` is `true` (the default), bookmarks are written to disk s
 
 Within that directory, each edited file gets its own bookmark file (named after the file's absolute path). Additional named lists are stored as `<file>.list.<name>` sidecars, and mnemonics as a `<file>.mn` sidecar. Files use a small JSON format; older comma-separated files are read transparently and upgraded on the next save.
 
+Each bookmark records its line's text and surrounding context, not just a line number. When you reopen a file that changed while it was closed — lines inserted above the mark, a function moved, the line lightly edited or reindented — the bookmark is relocated to its content rather than left pointing at a stale line. If no confident match is found it falls back to the stored line number, so it is never worse than a plain line reference.
+
 ## Example workflow
 
 A code-review pass:

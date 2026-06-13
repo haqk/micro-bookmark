@@ -22,10 +22,12 @@ jobs:
           sudo luarocks install luacheck
       - name: Parse-check bookmark.lua
         run: lua5.4 -e 'local f, err = loadfile("bookmark.lua"); if not f then error(err) end'
-      - name: Lint bookmark.lua
-        run: luacheck bookmark.lua
+      - name: Lint bookmark.lua and tests
+        run: luacheck bookmark.lua tests/
       - name: Unit tests
         run: lua5.4 tests/test_persistence.lua
+      - name: Integration tests (persistence round-trip)
+        run: lua5.4 tests/test_integration.lua
 
   repo-json:
     runs-on: ubuntu-latest

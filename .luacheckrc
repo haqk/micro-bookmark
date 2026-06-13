@@ -12,6 +12,8 @@ globals = {
     "onBufferOpen",
     "onBufPaneOpen",
     "onQuit",
+    "preQuit",
+    "preQuitAll",
     "onSave",
     "onBeforeTextEvent",
     "onInsertNewline",

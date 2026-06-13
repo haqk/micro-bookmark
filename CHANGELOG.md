@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+- Content-anchored bookmarks (persistence schema `v2`): each saved bookmark now records its line text and the adjacent lines, so on reload the mark is relocated by content. Bookmarks survive edits made while a file was closed — insertions above the mark, function reordering, reindentation, and light edits to the line itself — instead of pointing at a stale line number. Relocation is staged (exact line → exact text → whitespace-normalized text → bounded fuzzy match) and always falls back to the stored line number, so it is never worse than before. Older `v0`/`v1` sidecar files load unchanged.
+
+### Fixed
+- Bookmarks saved for a command-line-opened file (`micro file`) are now restored on reopen. micro opens such files before running the plugin's `init()`, so the `bookmark.persist` option was still unregistered (`nil`) when the loader ran and bookmarks were silently skipped. Loading and saving now treat an unregistered option as enabled and only bail on an explicit `false`.
+- Bookmarks now persist when you quit micro, not only on file save. Toggling a bookmark does not mark the buffer modified, so bookmark-only changes (e.g. on a file you never edit) were lost on quit. Saving runs from the `preQuit`/`preQuitAll` hooks because micro skips the post-quit `onQuit` callback when the last pane exits the editor. Persisting is skipped for a modified buffer, where line numbers would not match the on-disk file.
+
 ## [2.3.11] - 2026-06-13
 
 ### Added

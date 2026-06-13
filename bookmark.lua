@@ -626,17 +626,154 @@ local function _json_decode(s)
     return nil
 end
 
-local function _encode_list(lst)
-    local marks = {}
-    for _, y in ipairs(lst.marks) do
-        local name = lst.names[y]
-        if name and name ~= "" then
-            table.insert(marks, '{"y":' .. y .. ',"name":' .. _jstr(name) .. "}")
-        else
-            table.insert(marks, '{"y":' .. y .. "}")
+-- ── content anchoring ──────────────────────────────────────────────────────────
+-- A persisted bookmark (schema v2) stores not just a line number but the line's
+-- text and its immediate neighbours. On load the mark is relocated by content so
+-- it survives edits made while the file was closed — insertions above it, function
+-- reordering, light edits to the line itself. The stored line number is only a
+-- hint and the final fallback: relocation never lands on a worse-than-stored guess.
+
+local ANCHOR_CTX_MAX = 200    -- cap stored before/after context length
+local DICE_THRESHOLD = 0.6    -- min bigram-Dice similarity to accept a line as the mark
+local DICE_RADIUS    = 2000   -- bound the (costly) fuzzy scan to ±this many lines
+
+-- collapse internal whitespace and trim ends, for tolerant comparison
+local function _norm(s)
+    if s == nil then return "" end
+    s = string.gsub(s, "%s+", " ")
+    s = string.gsub(s, "^ ", "")
+    s = string.gsub(s, " $", "")
+    return s
+end
+
+-- Sørensen–Dice similarity over character bigrams (0..1). Pure arithmetic — no
+-- bitwise ops, so it runs on micro's Lua 5.1 runtime.
+local function _dice(a, b)
+    if a == b then return 1.0 end
+    if #a < 2 or #b < 2 then return 0.0 end
+    local ga, tota = {}, 0
+    for i = 1, #a - 1 do
+        local g = string.sub(a, i, i + 1)
+        ga[g] = (ga[g] or 0) + 1
+        tota = tota + 1
+    end
+    local inter, totb = 0, 0
+    local gb = {}
+    for i = 1, #b - 1 do
+        local g = string.sub(b, i, i + 1)
+        gb[g] = (gb[g] or 0) + 1
+        totb = totb + 1
+    end
+    for g, nb in pairs(gb) do
+        local na = ga[g]
+        if na then inter = inter + math.min(na, nb) end
+    end
+    if tota + totb == 0 then return 0.0 end
+    return (2 * inter) / (tota + totb)
+end
+
+-- Relocate one anchor against the current buffer content.
+--   getline(i): 0-indexed current line text (nil out of range)
+--   nlines    : current line count
+--   a         : anchor {y=, text=, before=, after=}
+-- Returns the resolved 0-indexed line. Context and proximity only break ties
+-- between lines that already clear the text bar; they never rescue a poor match.
+local function _resolve_anchor(getline, nlines, a)
+    local y = a.y or 0
+    local function clamp(i)
+        if nlines <= 0 then return 0 end
+        if i < 0 then return 0 end
+        if i > nlines - 1 then return nlines - 1 end
+        return i
+    end
+    -- no usable anchor text (v0/v1 entry, or a blank line): trust the number
+    if a.text == nil or _norm(a.text) == "" then return clamp(y) end
+    -- A. position fast-path — the common case of an unchanged file
+    if y >= 0 and y <= nlines - 1 and getline(y) == a.text then return y end
+
+    local ntext   = _norm(a.text)
+    local nbefore = a.before and _norm(a.before) or nil
+    local nafter  = a.after  and _norm(a.after)  or nil
+
+    local function ctx_prox(i, base)
+        local s = base
+        if nbefore and nbefore ~= "" and i > 0 and _norm(getline(i - 1)) == nbefore then s = s + 0.15 end
+        if nafter  and nafter  ~= "" and i < nlines - 1 and _norm(getline(i + 1)) == nafter then s = s + 0.15 end
+        local dist = i > y and (i - y) or (y - i)
+        s = s + 0.1 / (1 + dist)   -- nearer the stored line wins ties
+        return s
+    end
+
+    local best_i, best_s = nil, -1
+
+    -- B. exact-text candidates
+    for i = 0, nlines - 1 do
+        if getline(i) == a.text then
+            local s = ctx_prox(i, 2.0)
+            if s > best_s then best_s, best_i = s, i end
         end
     end
-    return '{"v":1,"marks":[' .. table.concat(marks, ",") .. "]}"
+    if best_i ~= nil then return best_i end
+
+    -- C. normalized-text candidates (tolerates reindentation / trailing space)
+    for i = 0, nlines - 1 do
+        if _norm(getline(i)) == ntext then
+            local s = ctx_prox(i, 1.5)
+            if s > best_s then best_s, best_i = s, i end
+        end
+    end
+    if best_i ~= nil then return best_i end
+
+    -- D. fuzzy similarity — only reached when the line was edited and moved. The
+    -- cheap exact/normalized tiers above are whole-file, so an unedited line that
+    -- moved any distance is already found; fuzzy is bounded to a window around the
+    -- stored line to keep open-time cost predictable on very large files.
+    local lo = y - DICE_RADIUS; if lo < 0 then lo = 0 end
+    local hi = y + DICE_RADIUS; if hi > nlines - 1 then hi = nlines - 1 end
+    for i = lo, hi do
+        local d = _dice(ntext, _norm(getline(i)))
+        if d >= DICE_THRESHOLD then
+            local s = ctx_prox(i, d)
+            if s > best_s then best_s, best_i = s, i end
+        end
+    end
+    if best_i ~= nil then return best_i end
+
+    -- E. nothing credible: keep the stored line (never worse than today)
+    return clamp(y)
+end
+
+local function _encode_list(lst, buf)
+    local nlines = buf and buf:LinesNum() or 0
+    -- capped context line, or nil if out of range / unavailable
+    local function ctx(i)
+        if not buf or i < 0 or i > nlines - 1 then return nil end
+        local s = buf:Line(i)
+        if s == nil then return nil end
+        if #s > ANCHOR_CTX_MAX then s = string.sub(s, 1, ANCHOR_CTX_MAX) end
+        return s
+    end
+    local marks = {}
+    for _, y in ipairs(lst.marks) do
+        local parts = {'"y":' .. y}
+        local name  = lst.names[y]
+        if name and name ~= "" then
+            table.insert(parts, '"name":' .. _jstr(name))
+        end
+        -- anchor text is stored uncapped so the exact fast-path can match long lines
+        if buf and y >= 0 and y <= nlines - 1 then
+            local text = buf:Line(y)
+            if text ~= nil then
+                table.insert(parts, '"text":' .. _jstr(text))
+                local b = ctx(y - 1)
+                local a = ctx(y + 1)
+                if b ~= nil then table.insert(parts, '"before":' .. _jstr(b)) end
+                if a ~= nil then table.insert(parts, '"after":'  .. _jstr(a)) end
+            end
+        end
+        table.insert(marks, "{" .. table.concat(parts, ",") .. "}")
+    end
+    return '{"v":2,"marks":[' .. table.concat(marks, ",") .. "]}"
 end
 
 local function _encode_mnemonics(mn)
@@ -657,38 +794,62 @@ local function _load_list(bn, listname)
     end
     local str   = fmt.Sprintf("%s", data)
     local first = string.match(str, "^%s*(.)")
+    local entries = {}   -- {y, name, text, before, after}
     if first == "{" then
         local obj = _json_decode(str)
         if obj and obj.marks then
             for i = 1, #obj.marks do
                 local m = obj.marks[i]
                 if m and m.y then
-                    table.insert(lst.marks, m.y)
-                    if m.name and m.name ~= "" then lst.names[m.y] = m.name end
+                    entries[#entries+1] = {
+                        y = m.y, name = m.name,
+                        text = m.text, before = m.before, after = m.after,
+                    }
                 end
             end
         end
-        return
-    end
-    -- legacy v0 CSV fallback
-    for entry in string.gmatch(str, "([^,]+)") do
-        local colon = string.find(entry, ":", 1, true)
-        if colon then
-            local y     = tonumber(string.sub(entry, 1, colon - 1))
-            local label = string.sub(entry, colon + 1)
-            if y then
-                table.insert(lst.marks, y)
-                if label ~= "" then lst.names[y] = label end
+    else
+        -- legacy v0 CSV fallback (line numbers only)
+        for entry in string.gmatch(str, "([^,]+)") do
+            local colon = string.find(entry, ":", 1, true)
+            if colon then
+                local y     = tonumber(string.sub(entry, 1, colon - 1))
+                local label = string.sub(entry, colon + 1)
+                if y then entries[#entries+1] = {y = y, name = (label ~= "" and label or nil)} end
+            else
+                local y = tonumber(entry)
+                if y then entries[#entries+1] = {y = y} end
             end
-        else
-            local y = tonumber(entry)
-            if y then table.insert(lst.marks, y) end
         end
     end
+    -- relocate each mark by content (when an anchor is present), then commit the
+    -- deduped, sorted result. Relocation can move and reorder marks.
+    local buf     = bd[bn].buf
+    local nlines  = buf and buf:LinesNum() or 0
+    local getline = buf and function(i) return buf:Line(i) end or nil
+    local seen    = {}
+    for _, e in ipairs(entries) do
+        local y = e.y
+        if getline and e.text ~= nil then
+            y = _resolve_anchor(getline, nlines, e)
+        end
+        if not seen[y] then
+            seen[y] = true
+            lst.marks[#lst.marks+1] = y
+            if e.name and e.name ~= "" then lst.names[y] = e.name end
+        elseif e.name and e.name ~= "" and not lst.names[y] then
+            lst.names[y] = e.name
+        end
+    end
+    table.sort(lst.marks)
 end
 
 local function _load(bn)
-    if not config.GetGlobalOption("bookmark.persist") then return end
+    -- Persist unless explicitly disabled. micro opens command-line files before
+    -- running init() (where the option is registered), so onBufferOpen→_load sees
+    -- the option as nil; gating on `not <nil>` would wrongly skip loading. Treat
+    -- nil (unregistered, default-on) as enabled and only bail on an explicit false.
+    if config.GetGlobalOption("bookmark.persist") == false then return end
     -- load default list (backward compat path)
     _load_list(bn, "default")
     -- discover additional lists by scanning for .list.* sidecar files
@@ -745,11 +906,12 @@ local function _save_list(bn, listname)
         if goos.Stat(name) ~= nil then goos.Remove(name) end
         return
     end
-    ioutil.WriteFile(name, _encode_list(lst), 420)
+    ioutil.WriteFile(name, _encode_list(lst, bd[bn].buf), 420)
 end
 
 local function _save(bn)
-    if not config.GetGlobalOption("bookmark.persist") then return end
+    -- see _load: persist unless explicitly disabled (option may be unregistered early)
+    if config.GetGlobalOption("bookmark.persist") == false then return end
     for listname in pairs(bd[bn].lists) do
         _save_list(bn, listname)
     end
@@ -951,6 +1113,31 @@ function onBufPaneOpen(bp)
     _redraw(bp)
 end
 
+-- Persist on quit, not only on file save: toggling a bookmark does not mark the
+-- buffer modified, so bookmark-only changes (e.g. on a file you never edit) would
+-- otherwise be lost. This must run in `preQuit`, NOT `onQuit`: micro runs the
+-- post-action `onQuit` callback only after the Quit action, but quitting the last
+-- pane calls runtime.Goexit() inside that action and never returns — so onQuit
+-- never fires on the quit that exits the editor. `preQuit` runs before the action.
+-- Returning nothing lets the quit proceed (a `false` return would cancel it).
+local function _persist_if_clean(bp)
+    local bn = bp.Buf:GetName()
+    -- only persist a clean buffer: a modified buffer may be discarded on quit, and
+    -- its line numbers would not match the on-disk file.
+    if bd[bn] ~= nil and not bp.Buf:Modified() then _save(bn) end
+end
+
+function preQuit(bp)
+    _persist_if_clean(bp)
+end
+
+-- closing the whole editor (QuitAll): persist every clean open buffer
+function preQuitAll(_bp)
+    for bn, data in pairs(bd) do
+        if data and data.buf and not data.buf:Modified() then _save(bn) end
+    end
+end
+
 function onQuit(bp)
     local bn = bp.Buf:GetName()
     if _pickers[bn] then _pickers[bn] = nil end
@@ -1016,5 +1203,8 @@ if rawget(_G, "_BOOKMARK_TEST") then
         json_decode      = _json_decode,
         encode_list      = _encode_list,
         encode_mnemonics = _encode_mnemonics,
+        norm             = _norm,
+        dice             = _dice,
+        resolve_anchor   = _resolve_anchor,
     }
 end
