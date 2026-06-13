@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-06-13
+
 ### Added
 - Select text between bookmarks ([#5](https://github.com/haqk/micro-bookmark/issues/5)): `selectBetweenBookmarks` selects the whole lines between the two bookmarks bracketing the cursor; `selectToNextBookmark` and `selectToPrevBookmark` select from the current line to the nearest bookmark below/above. All operate on the active list, select whole lines, and are unbound by default.
 
@@ -67,7 +69,8 @@ All notable changes to this project are documented in this file. The format foll
 ### Added
 - Cursor-on-mark InfoBar message when the cursor lands on a bookmarked line.
 
-[Unreleased]: https://github.com/haqk/micro-bookmark/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/haqk/micro-bookmark/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/haqk/micro-bookmark/releases/tag/v2.5.0
 [2.4.0]: https://github.com/haqk/micro-bookmark/releases/tag/v2.4.0
 [2.3.11]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.11
 [2.3.10]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.10
