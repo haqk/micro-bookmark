@@ -1,95 +1,136 @@
 # Bookmarks for micro
 
-A plugin for the micro text editor. Bookmark lines to quickly jump between saved positions.
+[![version](https://img.shields.io/github/v/tag/haqk/micro-bookmark?label=version&sort=semver)](https://github.com/haqk/micro-bookmark/releases)
+[![micro](https://img.shields.io/badge/micro-%E2%89%A5%202.0.0-blue)](https://micro-editor.github.io/)
+[![license: MIT](https://img.shields.io/github/license/haqk/micro-bookmark)](LICENSE)
+
+A plugin for the [micro](https://micro-editor.github.io/) text editor. Bookmark lines to quickly jump between saved positions — with named bookmarks, per-buffer lists, mnemonic letters, pattern marking, search, and export.
+
+```text
+  gutter           buffer
+  ──────┬──────────────────────────────────────
+   1    │ local function parse(input)
+ ● 2    │   local tokens = {}            ← bookmarked, named "tokenizer entry"
+   3    │   for line in input:lines() do
+   4    │     ...
+ ● 5    │   end                          ← bookmarked
+  ──────┴──────────────────────────────────────
+  status line:  [BM 1/2]  parser.lua  2:18
+```
+
+*(Illustration — markers appear in micro's gutter; `$(bookmarkpos)` shows position on the status line.)*
+
+## Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Commands](#commands)
+- [Bookmark picker](#bookmark-picker)
+- [Bookmark lists](#bookmark-lists)
+- [Named bookmarks](#named-bookmarks)
+- [Mnemonics](#mnemonics)
+- [Pattern marking](#pattern-marking)
+- [Search and export](#search-and-export)
+- [Status line](#status-line)
+- [Options](#options)
+- [Customising keyboard shortcuts](#customising-keyboard-shortcuts)
+- [Where bookmarks are stored](#where-bookmarks-are-stored)
+- [Example workflow](#example-workflow)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Requirements
+
+micro **2.0.0 or newer**.
 
 ## Installation
 
+> **Note:** micro's built-in plugin channel currently ships an old release (2.2.3). To get the latest version with named lists, mnemonics, pattern marking, grep, export, and project scope, install manually until the channel catches up.
+
+**Manual install (recommended — gets the latest):**
+
+```sh
+git clone https://github.com/haqk/micro-bookmark ~/.config/micro/plug/bookmark
 ```
-# option 1: bash
+
+Then restart micro. To update later, `git pull` in that directory.
+
+**Via the plugin channel (older release):**
+
+```sh
+# bash
 $ micro -plugin install bookmark
 
-# option 2: micro
+# or from inside micro
 > plugin install bookmark
 ```
 
-## Usage
+Confirm what you have with `> bookmarkVersion`. In-editor help is available with `> help bookmark`.
 
+## Quick start
+
+```text
+> toggleBookmark      # mark the current line          (Ctrl-F2)
+F2 / Shift-F2         # jump to next / previous bookmark
+> listBookmarks       # open the picker                (Alt-F2)
 ```
-# mark/unmark current line (Ctrl-F2)
-> toggleBookmark
 
-# clear all bookmarks (CtrlShift-F2)
-> clearBookmarks
+That's enough to use it. Everything below is optional depth.
 
-# jump to next bookmark (F2)
-> nextBookmark
+## Commands
 
-# jump to previous bookmark (Shift-F2)
-> prevBookmark
+| Command            | Default key      | Description                                            |
+|--------------------|------------------|--------------------------------------------------------|
+| `toggleBookmark`   | `Ctrl-F2`        | Mark/unmark the current line                           |
+| `nextBookmark`     | `F2`             | Jump to the next bookmark in the active list           |
+| `prevBookmark`     | `Shift-F2`       | Jump to the previous bookmark in the active list       |
+| `clearBookmarks`   | `CtrlShift-F2`   | Clear all bookmarks in the active list (with confirm)  |
+| `listBookmarks`    | `Alt-F2`         | Open the picker for the current buffer                 |
+| `listAllBookmarks` | —                | Open the picker across all open buffers                |
+| `nameBookmark`     | —                | Attach a label to the current line's bookmark          |
+| `gotoBookmark`     | —                | Jump to a bookmark by number                           |
+| `bookmarkPattern`  | —                | Bookmark every line matching a Lua pattern             |
+| `grepBookmarks`    | —                | Open a searchable split of all bookmarks               |
+| `exportBookmarks`  | —                | Open a Markdown table of bookmarks in a scratch buffer |
+| `setMnemonic`      | —                | Assign a mnemonic letter `A`–`Z` to the current line   |
+| `gotoMnemonic`     | —                | Jump to a mnemonic letter                              |
+| `createList`       | —                | Create a named bookmark list and switch to it          |
+| `switchList`       | —                | Switch the active bookmark list                        |
+| `deleteList`       | —                | Delete the current (non-`default`) list                |
+| `listLists`        | —                | Show all lists with bookmark counts                    |
+| `bookmarkVersion`  | —                | Print the installed plugin version in the InfoBar      |
 
-# name the bookmark on the current line
-> nameBookmark
-
-# jump to a bookmark by number
-> gotoBookmark
-
-# open bookmark picker for current buffer (Alt-F2)
-> listBookmarks
-
-# open bookmark picker across all open buffers
-> listAllBookmarks
-
-# create a named bookmark list and switch to it
-> createList
-
-# switch the active bookmark list
-> switchList
-
-# delete the current (non-default) list
-> deleteList
-
-# show all lists with bookmark counts
-> listLists
-
-# set a mnemonic letter (A-Z) to the current line
-> setMnemonic
-
-# jump to a mnemonic letter
-> gotoMnemonic
-
-# bookmark every line matching a Lua pattern
-> bookmarkPattern
-
-# open a searchable split listing all bookmarks
-> grepBookmarks
-
-# open a markdown table of bookmarks in a scratch buffer
-> exportBookmarks
-
-# show the installed plugin version
-> bookmarkVersion
-```
+Commands without a default key can be bound yourself — see [Customising keyboard shortcuts](#customising-keyboard-shortcuts).
 
 ## Bookmark picker
 
-`listBookmarks` opens a split pane listing all bookmarks with their line number and a content preview. Press **Enter** to jump to the selected bookmark, **Ctrl-Q** to close the picker.
+`listBookmarks` opens a split pane listing all bookmarks with their line number and a content preview:
 
-`listAllBookmarks` does the same across every open buffer.
+```text
+ bookmarks — parser.lua (review) ─────────────────
+ 2    local tokens = {}            tokenizer entry
+ 5    end
+ 11   -- TODO: handle EOF
+ ──────────────────────────────────────────────────
+ Enter: jump    Ctrl-Q: close
+```
+
+Press **Enter** to jump to the selected bookmark, **Ctrl-Q** to close the picker. `listAllBookmarks` does the same across every open buffer.
 
 ## Bookmark lists
 
 Each buffer has a `default` bookmark list. Create additional named lists to group bookmarks by concern (e.g. `todo`, `review`, `debug`):
 
-```
+```text
 > createList    — prompt for a name, create and switch to it
 > switchList    — switch the active list
 > deleteList    — delete the current list (default is protected)
 > listLists     — show all lists with bookmark counts
 ```
 
-All navigation (`nextBookmark`, `prevBookmark`), `toggleBookmark`, `clearBookmarks`, and `listBookmarks` operate on the **active** list. `listAllBookmarks` shows bookmarks from every list in every open buffer.
-
-Lists are persisted per-file: the default list uses the standard bookmark file; additional lists use a `.list.<name>` sidecar file in the same directory.
+List names may contain letters, digits, `_` and `-`. All navigation (`nextBookmark`, `prevBookmark`), `toggleBookmark`, `clearBookmarks`, and `listBookmarks` operate on the **active** list. `listAllBookmarks` shows bookmarks from every list in every open buffer.
 
 ## Named bookmarks
 
@@ -97,22 +138,22 @@ Use `nameBookmark` on any bookmarked line to attach a label. The label appears i
 
 ## Mnemonics
 
-`setMnemonic` assigns a letter `A`-`Z` to the current line; `gotoMnemonic` jumps to a previously set letter. Mnemonics are shared across all of a buffer's lists and persist alongside bookmarks.
+`setMnemonic` assigns a letter `A`–`Z` to the current line; `gotoMnemonic` jumps to a previously set letter. Mnemonics are shared across all of a buffer's lists and persist alongside bookmarks.
 
 ## Pattern marking
 
-`bookmarkPattern` prompts for a Lua pattern and bookmarks every line in the buffer that matches it. Invalid patterns are reported in the InfoBar.
+`bookmarkPattern` prompts for a [Lua pattern](https://www.lua.org/manual/5.4/manual.html#6.4.1) (not a regular expression) and bookmarks every line in the buffer that matches it. Invalid patterns are reported in the InfoBar.
 
 ## Search and export
 
 - `grepBookmarks` opens a split pane listing every bookmark with its content; use micro's `Ctrl-F` to search within it.
-- `exportBookmarks` opens a markdown table in a scratch buffer — handy for copying or saving as a checklist.
+- `exportBookmarks` opens a Markdown table in a scratch buffer — handy for copying or saving as a checklist.
 
 ## Status line
 
 Add `$(bookmarkpos)` to your `statusformatl` or `statusformatr` setting to show the current bookmark position, e.g. `[BM 2/5]`:
 
-```
+```text
 > set statusformatr "$(bookmarkpos) $(filename) $(line):$(col)"
 ```
 
@@ -124,7 +165,7 @@ Add `$(bookmarkpos)` to your `statusformatl` or `statusformatr` setting to show 
 | `bookmark.persist`       | `true`, `false`              | `true`   | Save and restore bookmarks across sessions                   |
 | `bookmark.scope`         | `global`, `project`          | `global` | `global` stores in `~/.config/micro/plug/bookmark/`; `project` stores in `<cwd>/.bookmarks/` |
 
-```
+```text
 > set bookmark.gutter_style warning
 > set bookmark.persist false
 > set bookmark.scope project
@@ -132,7 +173,7 @@ Add `$(bookmarkpos)` to your `statusformatl` or `statusformatr` setting to show 
 
 ## Customising keyboard shortcuts
 
-Default bindings can be overridden in `~/.config/micro/bindings.json`:
+Default bindings can be overridden — and the unbound commands bound — in `~/.config/micro/bindings.json`:
 
 ```json
 {
@@ -143,3 +184,45 @@ Default bindings can be overridden in `~/.config/micro/bindings.json`:
     "Alt-F2":       "command:listBookmarks"
 }
 ```
+
+Any command in the [Commands](#commands) table can be bound this way, e.g. `"Alt-m": "command:setMnemonic"`.
+
+## Where bookmarks are stored
+
+When `bookmark.persist` is `true` (the default), bookmarks are written to disk so they survive restarts. The storage directory depends on `bookmark.scope`:
+
+| Scope     | Directory                          |
+|-----------|------------------------------------|
+| `global`  | `~/.config/micro/plug/bookmark/`   |
+| `project` | `<cwd>/.bookmarks/`                |
+
+Within that directory, each edited file gets its own bookmark file (named after the file's absolute path). Additional named lists are stored as `<file>.list.<name>` sidecars, and mnemonics as a `<file>.mn` sidecar. Files use a small JSON format; older comma-separated files are read transparently and upgraded on the next save.
+
+## Example workflow
+
+A code-review pass:
+
+1. `> createList` and name it `review`.
+2. Walk the diff; `> toggleBookmark` (`Ctrl-F2`) on each line worth revisiting, and `> nameBookmark` to note *why*.
+3. `> grepBookmarks` to scan them, or `> exportBookmarks` to get a Markdown checklist you can paste into the PR.
+4. `> deleteList` when the review is done.
+
+## Troubleshooting
+
+- **Bookmarks don't persist across sessions** — check `bookmark.persist` is `true`. In `project` scope they are saved under `<cwd>/.bookmarks/`, so they only reappear when micro is launched from the same directory.
+- **`F2` / `Alt-F2` do nothing** — some terminals intercept function and Alt keys. Bind the commands to other keys in `bindings.json` (see above).
+- **`bookmarkPattern` matches nothing** — it takes a *Lua pattern*, not a regular expression (`%d` not `\d`, no `\b`). Check the InfoBar for a pattern error.
+
+## Contributing
+
+Issues and pull requests are welcome. For code changes:
+
+- Parse-check and lint: `lua5.4 -e 'loadfile("bookmark.lua")'` and `luacheck bookmark.lua`.
+- Update `CHANGELOG.md` under `## [Unreleased]` for user-visible changes, and this README for new commands or options.
+- CI runs the parse-check, luacheck, and a `repo.json`/`VERSION` consistency check on every pull request.
+
+To report a security issue, see [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
