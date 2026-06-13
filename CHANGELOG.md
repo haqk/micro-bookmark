@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-06-13
+
 ### Added
 - Content-anchored bookmarks (persistence schema `v2`): each saved bookmark now records its line text and the adjacent lines, so on reload the mark is relocated by content. Bookmarks survive edits made while a file was closed — insertions above the mark, function reordering, reindentation, and light edits to the line itself — instead of pointing at a stale line number. Relocation is staged (exact line → exact text → whitespace-normalized text → bounded fuzzy match) and always falls back to the stored line number, so it is never worse than before. Older `v0`/`v1` sidecar files load unchanged.
 
@@ -62,7 +64,8 @@ All notable changes to this project are documented in this file. The format foll
 ### Added
 - Cursor-on-mark InfoBar message when the cursor lands on a bookmarked line.
 
-[Unreleased]: https://github.com/haqk/micro-bookmark/compare/v2.3.11...HEAD
+[Unreleased]: https://github.com/haqk/micro-bookmark/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/haqk/micro-bookmark/releases/tag/v2.4.0
 [2.3.11]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.11
 [2.3.10]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.10
 [2.3.9]: https://github.com/haqk/micro-bookmark/releases/tag/v2.3.9
