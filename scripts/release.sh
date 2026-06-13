@@ -75,20 +75,27 @@ else
     echo "DRY: jq prepend $NEW → repo.json"
 fi
 
-# 3. move CHANGELOG [Unreleased] under the new version header
+# 3. move CHANGELOG [Unreleased] under the new version header and update the
+#    link footer (retarget the Unreleased compare link, add the new tag link)
 if [[ -f CHANGELOG.md ]] && [[ $DRY_RUN -eq 0 ]]; then
-    awk -v ver="$NEW" -v date="$TODAY" '
+    awk -v ver="$NEW" -v date="$TODAY" -v cur="$CUR" '
         /^## \[Unreleased\]/ {
             print
             print ""
             print "## [" ver "] - " date
             next
         }
+        /^\[Unreleased\]:/ {
+            gsub("v" cur "\\.\\.\\.HEAD", "v" ver "...HEAD")
+            print
+            print "[" ver "]: https://github.com/haqk/micro-bookmark/releases/tag/v" ver
+            next
+        }
         { print }
     ' CHANGELOG.md > CHANGELOG.md.tmp
     mv CHANGELOG.md.tmp CHANGELOG.md
 elif [[ -f CHANGELOG.md ]]; then
-    echo "DRY: insert ## [$NEW] - $TODAY under [Unreleased] in CHANGELOG.md"
+    echo "DRY: insert ## [$NEW] - $TODAY under [Unreleased] and retarget footer links in CHANGELOG.md"
 fi
 
 # 4. commit + tag

@@ -18,6 +18,14 @@ if ! [[ -f repo.json ]]; then
     exit 2
 fi
 
+# Refuse to emit a manifest whose top version has no matching tag: the channel
+# URL points at archive/v<top>.zip, which would 404 for users until the tag exists.
+top=$(jq -r '.[0].Versions[0].Version' repo.json)
+if ! git rev-parse --verify "v$top" >/dev/null 2>&1; then
+    echo "error: repo.json top version is $top but tag v$top does not exist; tag and push the release first" >&2
+    exit 2
+fi
+
 # The plugin-channel expects the same shape as repo.json (an array with one
 # object), so we just emit repo.json — formatted and validated.
 jq '.' repo.json > "$OUT"

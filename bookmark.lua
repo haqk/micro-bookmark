@@ -853,12 +853,12 @@ for _, ev in ipairs({
     _G[ev] = function(bp) _check_cursor_on_mark(bp) end
 end
 
-function onBeforeTextEvent(b, t)
+function onBeforeTextEvent(_b, _t)
     _save_pre_state(micro.CurPane())
 end
 
-function onInsertNewline(bp)
-    bp = micro.CurPane()
+function onInsertNewline(_bp)
+    local bp = micro.CurPane()
     local bn = bp.Buf:GetName()
     if bd[bn] == nil then return end
     local cx = bd[bn].curpos and bd[bn].curpos.X

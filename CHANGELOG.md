@@ -22,32 +22,32 @@ All notable changes to this project are documented in this file. The format foll
 - `deleteList` now removes the on-disk sidecar instead of leaving an orphan file.
 - Sidecar names containing `,` or `:` are preserved correctly (JSON format).
 
-## [2.3.10] - 2026
+## [2.3.10] - 2026-06-13
 
 ### Fixed
 - `ipairs`/`pairs` on Go slices (userdata) replaced with numeric for-loop in `_load` so additional lists are discovered correctly.
 
-## [2.3.9] - 2026
+## [2.3.9] - 2026-04-13
 
 ### Added
 - Named bookmark lists per buffer (`createList`, `switchList`, `deleteList`, `listLists`).
 
-## [2.3.8] - 2026
+## [2.3.8] - 2026-04-13
 
 ### Added
 - `grepBookmarks` — searchable split listing of bookmarks in the active list.
 
-## [2.3.7] - 2026
+## [2.3.7] - 2026-04-13
 
 ### Added
 - Mnemonic bookmarks `A`-`Z` (`setMnemonic`, `gotoMnemonic`).
 
-## [2.3.6] - 2026
+## [2.3.6] - 2026-04-13
 
 ### Added
 - `bookmark.scope` option for per-project bookmark storage in `<cwd>/.bookmarks/`.
 
-## [2.3.5] - 2026
+## [2.3.5] - 2026-04-13
 
 ### Added
 - Cursor-on-mark InfoBar message when the cursor lands on a bookmarked line.
