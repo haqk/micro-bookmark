@@ -24,6 +24,8 @@ jobs:
         run: lua5.4 -e 'local f, err = loadfile("bookmark.lua"); if not f then error(err) end'
       - name: Lint bookmark.lua
         run: luacheck bookmark.lua
+      - name: Unit tests
+        run: lua5.4 tests/test_persistence.lua
 
   repo-json:
     runs-on: ubuntu-latest

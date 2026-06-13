@@ -218,8 +218,9 @@ A code-review pass:
 Issues and pull requests are welcome. For code changes:
 
 - Parse-check and lint: `lua5.4 -e 'loadfile("bookmark.lua")'` and `luacheck bookmark.lua`.
+- Run the unit tests: `lua5.4 tests/test_persistence.lua` (covers the pure persistence helpers).
 - Update `CHANGELOG.md` under `## [Unreleased]` for user-visible changes, and this README for new commands or options.
-- CI runs the parse-check, luacheck, and a `repo.json`/`VERSION` consistency check on every pull request.
+- CI runs the parse-check, luacheck, the unit tests, and a `repo.json`/`VERSION` consistency check on every pull request.
 
 To report a security issue, see [SECURITY.md](SECURITY.md).
 

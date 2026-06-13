@@ -19,5 +19,6 @@
 
 - [ ] `bookmark.lua` parses (`lua5.4 -e 'loadfile("bookmark.lua")'`)
 - [ ] `luacheck bookmark.lua` is clean
+- [ ] `lua5.4 tests/test_persistence.lua` passes
 - [ ] CHANGELOG.md updated under `## [Unreleased]` (for user-visible changes)
 - [ ] README.md updated (for new commands or options)

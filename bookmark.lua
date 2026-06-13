@@ -38,6 +38,12 @@ local function _bfile(bn)
     return _bdir() .. "/" .. string.gsub(filepath.Abs(bn), "/", "%%")
 end
 
+-- file for a named list: default uses the base path (backward compat), others get a suffix
+local function _lfile(bn, listname)
+    if listname == "default" then return _bfile(bn) end
+    return _bfile(bn) .. ".list." .. listname
+end
+
 local function _mt()
     local s = config.GetGlobalOption("bookmark.gutter_style")
     if s == "warning" then return buffer.MTWarning
@@ -641,12 +647,6 @@ local function _encode_mnemonics(mn)
     return '{"v":1,"mn":{' .. table.concat(parts, ",") .. "}}"
 end
 
--- file for a named list: default uses the base path (backward compat), others get a suffix
-local function _lfile(bn, listname)
-    if listname == "default" then return _bfile(bn) end
-    return _bfile(bn) .. ".list." .. listname
-end
-
 local function _load_list(bn, listname)
     local data, err = ioutil.ReadFile(_lfile(bn, listname))
     if err ~= nil then return end
@@ -754,9 +754,7 @@ local function _save(bn)
         _save_list(bn, listname)
     end
     local mname = _bfile(bn) .. ".mn"
-    local any   = false
-    for _ in pairs(bd[bn].mnemonics) do any = true; break end
-    if any then
+    if next(bd[bn].mnemonics) ~= nil then
         ioutil.WriteFile(mname, _encode_mnemonics(bd[bn].mnemonics), 420)
     elseif goos.Stat(mname) ~= nil then
         goos.Remove(mname)
@@ -1007,4 +1005,16 @@ function init()
     micro.SetStatusInfoFn("bookmarkpos")
 
     config.AddRuntimeFile("bookmark", config.RTHelp, "help/bookmark.md")
+end
+
+-- Test seam: the unit-test harness sets _BOOKMARK_TEST before loading this file
+-- and reads the pure helpers back through this table. Inert inside micro, where
+-- _BOOKMARK_TEST is never set, so it has no effect on the plugin at runtime.
+if rawget(_G, "_BOOKMARK_TEST") then
+    _G._bookmark_test_exports = {
+        jstr             = _jstr,
+        json_decode      = _json_decode,
+        encode_list      = _encode_list,
+        encode_mnemonics = _encode_mnemonics,
+    }
 end
