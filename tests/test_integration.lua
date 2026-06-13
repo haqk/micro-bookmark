@@ -26,12 +26,21 @@ local CURPANE
 local function deref(t) return setmetatable(t, { __unm = function(s) return s end }) end
 
 local function newcursor()
-    return {
-        Loc            = deref({ X = 0, Y = 0 }),
-        HasSelection   = function() return false end,
-        ResetSelection = function() end,
-        CurSelection   = deref({ deref({ Y = 0, X = 0 }), deref({ Y = 0, X = 0 }) }),
+    local cur
+    cur = {
+        Loc          = deref({ X = 0, Y = 0 }),
+        CurSelection = deref({ deref({ Y = 0, X = 0 }), deref({ Y = 0, X = 0 }) }),
+        HasSelection = function()
+            return cur.CurSelection[1].Y ~= cur.CurSelection[2].Y
+                or cur.CurSelection[1].X ~= cur.CurSelection[2].X
+        end,
+        ResetSelection    = function() cur.CurSelection[1] = deref({ X = 0, Y = 0 })
+                                       cur.CurSelection[2] = deref({ X = 0, Y = 0 }) end,
+        SetSelectionStart = function(_, loc) cur.CurSelection[1] = loc end,
+        SetSelectionEnd   = function(_, loc) cur.CurSelection[2] = loc end,
+        GotoLoc           = function(_, loc) cur.Loc = loc end,
     }
+    return cur
 end
 
 local BTDefault = "BTDefault"
@@ -53,7 +62,7 @@ local function newbuf(name, lines)
     return buf
 end
 
-local function newpane(buf) return { Buf = buf, Cursor = buf._cur } end
+local function newpane(buf) return { Buf = buf, Cursor = buf._cur, Relocate = function() end } end
 
 local function readfile(p)
     local f = io.open(p, "rb"); if not f then return nil, "no such file" end
@@ -73,6 +82,7 @@ local STUBS = {
         BTDefault        = BTDefault, MTInfo = "info", MTWarning = "warn", MTError = "err",
         NewMessageAtLine = function(_, msg, line) return { line = line, msg = msg } end,
         NewBuffer        = function(_, n) return newbuf(n or "scratch", {}) end,
+        Loc              = function(x, y) return { X = x, Y = y } end,
     },
     ["micro/config"] = {
         ConfigDir            = TMP,
@@ -205,6 +215,37 @@ CMDS["toggleBookmark"](p6)
 onSave(p6)
 check("persist=false writes no sidecar", not exists(sidecar))
 OPTS["bookmark.persist"] = true
+
+-- ── scenario 7: selection commands (issue #5) ───────────────────────────────────
+-- whole-line selections; end is start-of-(b+1) so line b's newline is included.
+do
+    local b7 = newbuf(FILE, { "l0", "l1", "l2", "l3", "l4", "l5" })  -- lines 0..5
+    CURPANE = newpane(b7)
+    onBufferOpen(b7); onBufPaneOpen(CURPANE)
+    CURPANE.Cursor.Loc.Y = 1; CMDS["toggleBookmark"](CURPANE)   -- mark line 1
+    CURPANE.Cursor.Loc.Y = 4; CMDS["toggleBookmark"](CURPANE)   -- mark line 4
+
+    -- between: cursor on line 2 -> select lines 1..4 => (0,1)..(0,5)
+    CURPANE.Cursor.Loc.Y = 2
+    CMDS["selectBetweenBookmarks"](CURPANE)
+    local s = CURPANE.Cursor.CurSelection
+    check("selectBetween: start (0,1)", s[1].X == 0 and s[1].Y == 1, s[1].X .. "," .. s[1].Y)
+    check("selectBetween: end (0,5)",   s[2].X == 0 and s[2].Y == 5, s[2].X .. "," .. s[2].Y)
+
+    -- to-next from line 2 -> nearest mark below is 4 -> lines 2..4 => (0,2)..(0,5)
+    CURPANE.Cursor.Loc.Y = 2
+    CMDS["selectToNextBookmark"](CURPANE)
+    s = CURPANE.Cursor.CurSelection
+    check("selectToNext: start (0,2)", s[1].X == 0 and s[1].Y == 2, s[1].X .. "," .. s[1].Y)
+    check("selectToNext: end (0,5)",   s[2].X == 0 and s[2].Y == 5, s[2].X .. "," .. s[2].Y)
+
+    -- to-prev from line 3 -> nearest mark above is 1 -> lines 1..3 => (0,1)..(0,4)
+    CURPANE.Cursor.Loc.Y = 3
+    CMDS["selectToPrevBookmark"](CURPANE)
+    s = CURPANE.Cursor.CurSelection
+    check("selectToPrev: start (0,1)", s[1].X == 0 and s[1].Y == 1, s[1].X .. "," .. s[1].Y)
+    check("selectToPrev: end (0,4)",   s[2].X == 0 and s[2].Y == 4, s[2].X .. "," .. s[2].Y)
+end
 
 io.write(string.format("\n%d passed, %d failed\n", pass, fail))
 os.exit(fail > 0 and 1 or 0)

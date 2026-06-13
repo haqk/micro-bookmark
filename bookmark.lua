@@ -184,6 +184,81 @@ local function _prev(bp)
     bp:Relocate()
 end
 
+-- ── selection between bookmarks ─────────────────────────────────────────────────
+
+-- Pure: given the active list's sorted marks (0-indexed lines) and the cursor
+-- line `cy`, return the inclusive line range a,b (a <= b) to select for `mode`,
+-- or nil when there is nothing sensible to select.
+--   "next"    : current line down to the nearest mark below the cursor
+--   "prev"    : the nearest mark above the cursor up to the current line
+--   "between" : the two marks that bracket the cursor (nil if the cursor is on a
+--               mark or outside the marked range — "place between two bookmarks")
+local function _sel_range(marks, cy, mode)
+    if mode == "next" then
+        for _, y in ipairs(marks) do
+            if y > cy then return cy, y end
+        end
+        return nil
+    elseif mode == "prev" then
+        local py
+        for _, y in ipairs(marks) do
+            if y < cy then py = y else break end
+        end
+        if py == nil then return nil end
+        return py, cy
+    else -- "between"
+        local lo, hi
+        for _, y in ipairs(marks) do
+            if y <= cy then lo = y end
+            if y >= cy and hi == nil then hi = y end
+        end
+        if lo == nil or hi == nil or lo == hi then return nil end
+        return lo, hi
+    end
+end
+
+-- Select whole lines a..b inclusive (b's trailing newline included unless b is the
+-- last line). Uses micro's Cursor selection API + the buffer.Loc constructor.
+local function _select_lines(bp, a, b)
+    local c    = bp.Buf:GetActiveCursor()
+    local last = bp.Buf:LinesNum() - 1
+    local startloc = buffer.Loc(0, a)
+    local endloc
+    if b < last then
+        endloc = buffer.Loc(0, b + 1)
+    else
+        endloc = buffer.Loc(#bp.Buf:Line(b), b)
+    end
+    c:ResetSelection()
+    c:SetSelectionStart(startloc)
+    c:SetSelectionEnd(endloc)
+    c:GotoLoc(endloc)
+    bp:Relocate()
+end
+
+local function _select_dir(bp, mode, empty_msg)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks == 0 then micro.InfoBar():Message("No bookmarks"); return end
+    local a, b = _sel_range(act.marks, bp.Buf:GetActiveCursor().Loc.Y, mode)
+    if a == nil then micro.InfoBar():Message(empty_msg); return end
+    _select_lines(bp, a, b)
+end
+
+local function _select_to_next(bp) _select_dir(bp, "next", "No bookmark below the cursor") end
+local function _select_to_prev(bp) _select_dir(bp, "prev", "No bookmark above the cursor") end
+
+local function _select_between(bp)
+    local bn = bp.Buf:GetName()
+    if bd[bn] == nil then return end
+    local act = _active(bn)
+    if #act.marks < 2 then micro.InfoBar():Message("Need at least two bookmarks"); return end
+    local a, b = _sel_range(act.marks, bp.Buf:GetActiveCursor().Loc.Y, "between")
+    if a == nil then micro.InfoBar():Message("Place the cursor between two bookmarks"); return end
+    _select_lines(bp, a, b)
+end
+
 local function _name_bookmark(bp)
     local bn  = bp.Buf:GetName()
     if bd[bn] == nil then return end
@@ -1165,6 +1240,9 @@ function init()
     config.MakeCommand("toggleBookmark",    _toggle,           config.OptionComplete)
     config.MakeCommand("nextBookmark",      _next,             config.OptionComplete)
     config.MakeCommand("prevBookmark",      _prev,             config.OptionComplete)
+    config.MakeCommand("selectToNextBookmark",   _select_to_next, config.OptionComplete)
+    config.MakeCommand("selectToPrevBookmark",   _select_to_prev, config.OptionComplete)
+    config.MakeCommand("selectBetweenBookmarks", _select_between, config.OptionComplete)
     config.MakeCommand("clearBookmarks",    _clear,            config.OptionComplete)
     config.MakeCommand("nameBookmark",      _name_bookmark,    config.OptionComplete)
     config.MakeCommand("gotoBookmark",      _goto_bookmark,    config.OptionComplete)
@@ -1206,5 +1284,6 @@ if rawget(_G, "_BOOKMARK_TEST") then
         norm             = _norm,
         dice             = _dice,
         resolve_anchor   = _resolve_anchor,
+        sel_range        = _sel_range,
     }
 end

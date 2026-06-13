@@ -210,6 +210,30 @@ do
     eq("resolve: no-text trusts y", M.resolve_anchor(g, n, { y = 3 }), 3)
 end
 
+-- ── selection range (issue #5) ──────────────────────────────────────────────────
+-- marks are 0-indexed line numbers, sorted ascending; sel_range returns a,b (a<=b)
+-- or nil. "next"/"prev" select from the cursor to the nearest mark below/above;
+-- "between" selects the two marks bracketing the cursor.
+local function rng(marks, cy, mode)
+    local a, b = M.sel_range(marks, cy, mode)
+    if a == nil then return "nil" end
+    return a .. "," .. b
+end
+local MKS = { 2, 5, 9 }
+eq("sel_range next: between marks",     rng(MKS, 3, "next"),    "3,5")
+eq("sel_range prev: between marks",     rng(MKS, 3, "prev"),    "2,3")
+eq("sel_range between: brackets",       rng(MKS, 3, "between"), "2,5")
+eq("sel_range next: on a mark",         rng(MKS, 5, "next"),    "5,9")
+eq("sel_range prev: on a mark",         rng(MKS, 5, "prev"),    "2,5")
+eq("sel_range between: on a mark = nil",rng(MKS, 5, "between"), "nil")
+eq("sel_range next: above all marks",   rng(MKS, 0, "next"),    "0,2")
+eq("sel_range prev: above all = nil",   rng(MKS, 0, "prev"),    "nil")
+eq("sel_range between: above all = nil",rng(MKS, 0, "between"), "nil")
+eq("sel_range next: below all = nil",   rng(MKS, 10, "next"),   "nil")
+eq("sel_range prev: below all",         rng(MKS, 10, "prev"),   "9,10")
+eq("sel_range between: below all = nil",rng(MKS, 10, "between"),"nil")
+eq("sel_range between: strictly inside",rng({ 2, 9 }, 5, "between"), "2,9")
+
 -- ── summary ─────────────────────────────────────────────────────────────────────
 io.write(string.format("\n%d passed, %d failed\n", passed, failed))
 if failed > 0 then os.exit(1) end

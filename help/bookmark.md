@@ -9,6 +9,9 @@ Bookmark lines to quickly jump between saved positions.
 | `toggleBookmark`     | Ctrl-F2          | Mark/unmark current line                           |
 | `nextBookmark`       | F2               | Jump to next bookmark                              |
 | `prevBookmark`       | Shift-F2         | Jump to previous bookmark                          |
+| `selectToNextBookmark`   | —            | Select from current line to nearest bookmark below |
+| `selectToPrevBookmark`   | —            | Select from nearest bookmark above to current line |
+| `selectBetweenBookmarks` | —            | Select whole lines between the bookmarks bracketing the cursor |
 | `clearBookmarks`     | CtrlShift-F2     | Clear all bookmarks in current buffer              |
 | `nameBookmark`       | —                | Attach a label to the bookmark on the current line |
 | `gotoBookmark`       | —                | Jump to a bookmark by number                       |

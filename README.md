@@ -27,6 +27,7 @@ A plugin for the [micro](https://micro-editor.github.io/) text editor. Bookmark 
 - [Quick start](#quick-start)
 - [Commands](#commands)
 - [Bookmark picker](#bookmark-picker)
+- [Selecting between bookmarks](#selecting-between-bookmarks)
 - [Bookmark lists](#bookmark-lists)
 - [Named bookmarks](#named-bookmarks)
 - [Mnemonics](#mnemonics)
@@ -86,6 +87,9 @@ That's enough to use it. Everything below is optional depth.
 | `toggleBookmark`   | `Ctrl-F2`        | Mark/unmark the current line                           |
 | `nextBookmark`     | `F2`             | Jump to the next bookmark in the active list           |
 | `prevBookmark`     | `Shift-F2`       | Jump to the previous bookmark in the active list       |
+| `selectToNextBookmark`   | —          | Select from the current line to the nearest bookmark below |
+| `selectToPrevBookmark`   | —          | Select from the nearest bookmark above to the current line |
+| `selectBetweenBookmarks` | —          | Select the whole lines between the two bookmarks bracketing the cursor |
 | `clearBookmarks`   | `CtrlShift-F2`   | Clear all bookmarks in the active list (with confirm)  |
 | `listBookmarks`    | `Alt-F2`         | Open the picker for the current buffer                 |
 | `listAllBookmarks` | —                | Open the picker across all open buffers                |
@@ -118,6 +122,16 @@ Commands without a default key can be bound yourself — see [Customising keyboa
 ```
 
 Press **Enter** to jump to the selected bookmark, **Ctrl-Q** to close the picker. `listAllBookmarks` does the same across every open buffer.
+
+## Selecting between bookmarks
+
+Bookmarks can delimit a region to select without counting lines:
+
+- `selectBetweenBookmarks` — selects the whole lines between the two bookmarks that bracket the cursor. Place the cursor between two marks first (it reports if the cursor is on a mark or outside the marked range).
+- `selectToNextBookmark` — selects from the current line down to the nearest bookmark below.
+- `selectToPrevBookmark` — selects from the nearest bookmark above up to the current line.
+
+All three operate on the active list and select whole lines (the lower line's trailing newline is included, so you can cut or copy the block cleanly). None are bound by default — see [Customising keyboard shortcuts](#customising-keyboard-shortcuts).
 
 ## Bookmark lists
 

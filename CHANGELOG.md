@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Added
+- Select text between bookmarks ([#5](https://github.com/haqk/micro-bookmark/issues/5)): `selectBetweenBookmarks` selects the whole lines between the two bookmarks bracketing the cursor; `selectToNextBookmark` and `selectToPrevBookmark` select from the current line to the nearest bookmark below/above. All operate on the active list, select whole lines, and are unbound by default.
+
 ## [2.4.0] - 2026-06-13
 
 ### Added
