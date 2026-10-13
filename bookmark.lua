@@ -331,9 +331,9 @@ local function _build_picker_lines(entries)
         local label = name ~= "" and ("  [" .. name .. "]") or ""
         if e.bufname then
             local short = e.bufname:match("([^/]+)$") or e.bufname
-            table.insert(lines, fmt.Sprintf(" %2d  %-20s  line %-5d%s  %s", i, short, e.y + 1, label, content))
+            table.insert(lines, fmt.Sprintf(" %2.0f  %-20s  line %-5.0f%s  %s", i, short, e.y + 1, label, content))
         else
-            table.insert(lines, fmt.Sprintf(" %2d  line %-5d%s  %s", i, e.y + 1, label, content))
+            table.insert(lines, fmt.Sprintf(" %2.0f  line %-5.0f%s  %s", i, e.y + 1, label, content))
         end
     end
     return table.concat(lines, "\n")
